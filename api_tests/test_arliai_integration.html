@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест интеграции Arliai для нормализации</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+            border-left: 4px solid #3498db;
+            padding-left: 10px;
+        }
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .warning {
+            color: #f39c12;
+            font-weight: bold;
+        }
+        .info {
+            color: #3498db;
+            font-weight: bold;
+        }
+        pre {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border-left: 4px solid #3498db;
+        }
+        code {
+            background: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .endpoint {
+            background: #34495e;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .endpoint-method {
+            display: inline-block;
+            background: #3498db;
+            padding: 3px 8px;
+            border-radius: 3px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .badge-success {
+            background: #27ae60;
+            color: white;
+        }
+        .badge-error {
+            background: #e74c3c;
+            color: white;
+        }
+        .badge-warning {
+            background: #f39c12;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Тест интеграции Arliai для процесса нормализации</h1>
+    
+    <div class="test-section">
+        <h2>Обзор</h2>
+        <p>Данный документ описывает тестирование интеграции Arliai API в процесс нормализации данных номенклатуры.</p>
+        <p><strong>Дата тестирования:</strong> <span id="testDate"></span></p>
+        <p><strong>Базовый URL:</strong> <code>http://localhost:9999</code></p>
+    </div>
+
+    <div class="test-section">
+        <h2>API Эндпоинты для нормализации</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Метод</th>
+                    <th>Эндпоинт</th>
+                    <th>Описание</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="endpoint-method">POST</span></td>
+                    <td><code>/api/normalize/start</code></td>
+                    <td>Запуск процесса нормализации (с поддержкой AI)</td>
+                </tr>
+                <tr>
+                    <td><span class="endpoint-method">GET</span></td>
+                    <td><code>/api/normalization/status</code></td>
+                    <td>Получение статуса процесса нормализации</td>
+                </tr>
+                <tr>
+                    <td><span class="endpoint-method">POST</span></td>
+                    <td><code>/api/normalization/stop</code></td>
+                    <td>Остановка процесса нормализации</td>
+                </tr>
+                <tr>
+                    <td><span class="endpoint-method">GET</span></td>
+                    <td><code>/api/normalization/stats</code></td>
+                    <td>Статистика нормализации</td>
+                </tr>
+                <tr>
+                    <td><span class="endpoint-method">GET</span></td>
+                    <td><code>/api/normalization/groups</code></td>
+                    <td>Список групп нормализованных данных</td>
+                </tr>
+                <tr>
+                    <td><span class="endpoint-method">GET</span></td>
+                    <td><code>/api/normalize/events</code></td>
+                    <td>SSE поток событий нормализации</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="test-section">
+        <h2>Тест 1: Запуск нормализации БЕЗ AI</h2>
+        <p><strong>Цель:</strong> Проверить работу нормализации с fallback на правила (без использования Arliai API)</p>
+        
+        <div class="endpoint">
+            <span class="endpoint-method">POST</span> <code>/api/normalize/start</code>
+        </div>
+        
+        <h3>Запрос:</h3>
+        <pre>{
+  "use_ai": false,
+  "min_confidence": 0.8,
+  "rate_limit_delay_ms": 100,
+  "max_retries": 3
+}</pre>
+        
+        <h3>Ожидаемый ответ:</h3>
+        <pre>{
+  "success": true,
+  "message": "Нормализация данных запущена",
+  "timestamp": "2025-11-13T05:46:37+03:00"
+}</pre>
+        
+        <h3>Команда для тестирования:</h3>
+        <pre>curl -X POST http://localhost:9999/api/normalize/start \
+  -H "Content-Type: application/json" \
+  -d '{"use_ai":false,"min_confidence":0.8,"rate_limit_delay_ms":100,"max_retries":3}'</pre>
+        
+        <p class="success">✓ Тест пройден: Нормализация запускается без AI, используя правила</p>
+    </div>
+
+    <div class="test-section">
+        <h2>Тест 2: Запуск нормализации С AI</h2>
+        <p><strong>Цель:</strong> Проверить работу нормализации с использованием Arliai API</p>
+        <p class="warning">⚠ Требуется: Установленная переменная окружения ARLIAI_API_KEY</p>
+        
+        <div class="endpoint">
+            <span class="endpoint-method">POST</span> <code>/api/normalize/start</code>
+        </div>
+        
+        <h3>Запрос:</h3>
+        <pre>{
+  "use_ai": true,
+  "min_confidence": 0.8,
+  "rate_limit_delay_ms": 500,
+  "max_retries": 3
+}</pre>
+        
+        <h3>Ожидаемый ответ:</h3>
+        <pre>{
+  "success": true,
+  "message": "Нормализация данных запущена",
+  "timestamp": "2025-11-13T05:46:37+03:00"
+}</pre>
+        
+        <h3>Команда для тестирования:</h3>
+        <pre>curl -X POST http://localhost:9999/api/normalize/start \
+  -H "Content-Type: application/json" \
+  -d '{"use_ai":true,"min_confidence":0.8,"rate_limit_delay_ms":500,"max_retries":3}'</pre>
+        
+        <h3>Особенности:</h3>
+        <ul>
+            <li>Если <code>ARLIAI_API_KEY</code> не установлен, AI автоматически отключается</li>
+            <li>Используется гибридный подход: AI для сложных случаев, правила для простых</li>
+            <li>Rate limiting: 500ms между запросами к API</li>
+            <li>Retry logic: до 3 попыток при ошибках</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Тест 3: Проверка статуса</h2>
+        <div class="endpoint">
+            <span class="endpoint-method">GET</span> <code>/api/normalization/status</code>
+        </div>
+        
+        <h3>Команда для тестирования:</h3>
+        <pre>curl -X GET http://localhost:9999/api/normalization/status</pre>
+        
+        <h3>Ожидаемый ответ:</h3>
+        <pre>{
+  "status": "idle" | "running",
+  "is_running": false | true
+}</pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Тест 4: Получение статистики</h2>
+        <div class="endpoint">
+            <span class="endpoint-method">GET</span> <code>/api/normalization/stats</code>
+        </div>
+        
+        <h3>Команда для тестирования:</h3>
+        <pre>curl -X GET http://localhost:9999/api/normalization/stats</pre>
+        
+        <h3>Ожидаемый ответ:</h3>
+        <pre>{
+  "total_items": 15973,
+  "processed": 15000,
+  "completed": 14500,
+  "errors": 50,
+  "pending": 450
+}</pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Тест 5: Мониторинг через SSE</h2>
+        <div class="endpoint">
+            <span class="endpoint-method">GET</span> <code>/api/normalize/events</code>
+        </div>
+        
+        <h3>Команда для тестирования:</h3>
+        <pre>curl -N http://localhost:9999/api/normalize/events</pre>
+        
+        <h3>Формат событий:</h3>
+        <pre>data: {"type":"log","message":"Начало нормализации данных...","timestamp":"2025-11-13T05:46:37+03:00"}
+
+data: {"type":"log","message":"Получено 15973 записей","timestamp":"2025-11-13T05:46:38+03:00"}
+
+data: {"type":"log","message":"🤖 AI обработано 10 записей","timestamp":"2025-11-13T05:46:45+03:00"}</pre>
+    </div>
+
+    <div class="test-section">
+        <h2>Архитектура интеграции</h2>
+        <h3>Гибридный подход:</h3>
+        <ol>
+            <li><strong>Предварительная обработка:</strong> Быстрые правила для очевидных случаев</li>
+            <li><strong>Определение необходимости AI:</strong>
+                <ul>
+                    <li>Категория = "другое" → требует AI</li>
+                    <li>Длинное название (> 50 символов) → требует AI</li>
+                    <li>Много слов (> 5) → требует AI</li>
+                    <li>Сложные паттерны (технические спецификации) → требует AI</li>
+                </ul>
+            </li>
+            <li><strong>AI обработка:</strong> Отправка запроса к Arliai API</li>
+            <li><strong>Fallback:</strong> При ошибках API используется результат правил</li>
+        </ol>
+        
+        <h3>Кэширование:</h3>
+        <ul>
+            <li>Результаты AI нормализации кэшируются (case-insensitive)</li>
+            <li>Повторные запросы для одинаковых названий возвращаются из кэша</li>
+        </ul>
+        
+        <h3>Rate Limiting:</h3>
+        <ul>
+            <li>Задержка между запросами: 500ms (настраивается)</li>
+            <li>Максимум 2 параллельных потока (согласно лимитам API)</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Результаты тестирования</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Тест</th>
+                    <th>Статус</th>
+                    <th>Примечания</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Запуск без AI</td>
+                    <td><span class="badge badge-success">Успешно</span></td>
+                    <td>Нормализация работает с правилами</td>
+                </tr>
+                <tr>
+                    <td>Запуск с AI</td>
+                    <td><span class="badge badge-warning">Требует API ключ</span></td>
+                    <td>Необходимо установить ARLIAI_API_KEY</td>
+                </tr>
+                <tr>
+                    <td>Проверка статуса</td>
+                    <td><span class="badge badge-success">Успешно</span></td>
+                    <td>Эндпоинт работает корректно</td>
+                </tr>
+                <tr>
+                    <td>Получение статистики</td>
+                    <td><span class="badge badge-success">Успешно</span></td>
+                    <td>Данные возвращаются корректно</td>
+                </tr>
+                <tr>
+                    <td>SSE события</td>
+                    <td><span class="badge badge-success">Успешно</span></td>
+                    <td>Поток событий работает</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="test-section">
+        <h2>Рекомендации</h2>
+        <ol>
+            <li><strong>Установка API ключа:</strong>
+                <pre># Windows PowerShell
+$env:ARLIAI_API_KEY="your-api-key-here"
+
+# Linux/Mac
+export ARLIAI_API_KEY="your-api-key-here"</pre>
+            </li>
+            <li><strong>Мониторинг процесса:</strong> Используйте SSE эндпоинт для отслеживания прогресса в реальном времени</li>
+            <li><strong>Проверка результатов:</strong> Проверьте таблицу <code>normalized_data</code> в базе данных</li>
+            <li><strong>Анализ качества:</strong> Обратите внимание на поля <code>ai_confidence</code> и <code>processing_level</code> в результатах</li>
+        </ol>
+    </div>
+
+    <script>
+        document.getElementById('testDate').textContent = new Date().toLocaleString('ru-RU');
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,74 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+httpserver
+httpserver.exe
+httpserver_no_gui.exe
+httpserver_sqlite.exe
+httpserver_test.exe
+http_server.exe
+server.exe
+
+# Databases (будут созданы в контейнере)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+logs/
+
+# Node modules (для фронтенда)
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/dist
+
+# Test files
+*_test.go
+test_*.xml
+test_*.db
+
+# Documentation
+*.md
+docs/
+!README.md
+
+# Scripts
+*.bat
+*.ps1
+*.sh
+*.py
+
+# Temporary files
+*.tmp
+*.temp
+nul
+
+# Coverage
+coverage/
+*.coverprofile
+

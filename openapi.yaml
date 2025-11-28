@@ -1,0 +1,1481 @@
+openapi: 3.1.0
+info:
+  title: HTTP Server API для работы с выгрузками из 1С
+  description: |
+    RESTful API для приема, хранения, нормализации и получения данных из 1С:Предприятие.
+    
+    ## Основные возможности:
+    - Прием данных из 1С через XML
+    - Хранение данных в SQLite базах данных
+    - Нормализация и обработка данных
+    - Классификация и переклассификация товаров
+    - Управление качеством данных
+    - Работа с КПВЭД классификатором
+    - Управление AI моделями и воркерами
+    
+    ## Версионирование:
+    - API v1: `/api/v1/*` - новые эндпоинты с улучшенной структурой
+    - Legacy: `/handshake`, `/metadata`, etc. - старые эндпоинты для обратной совместимости
+    
+    ## Форматы данных:
+    - JSON - для REST API запросов и ответов
+    - XML - для приема данных из 1С и получения данных в формате 1С
+    
+    ## Безопасность:
+    - API ключи для AI провайдеров управляются через `/api/workers/config`
+    - CORS поддерживается для всех источников
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:9999
+    description: Локальный сервер разработки
+  - url: https://api.example.com
+    description: Продакшн сервер
+
+tags:
+  - name: Health
+    description: Проверка состояния сервера
+  - name: Uploads
+    description: Управление выгрузками данных из 1С
+  - name: Normalized Uploads
+    description: Управление нормализованными выгрузками
+  - name: Database
+    description: Управление базами данных
+  - name: Normalization
+    description: Нормализация данных
+  - name: Classification
+    description: Классификация товаров
+  - name: Reclassification
+    description: Переклассификация товаров
+  - name: Quality
+    description: Анализ качества данных
+  - name: KPVED
+    description: Работа с КПВЭД классификатором
+  - name: Workers
+    description: Управление AI воркерами и моделями
+  - name: Monitoring
+    description: Мониторинг производительности
+  - name: Patterns
+    description: Обнаружение и исправление паттернов
+  - name: Snapshots
+    description: Управление срезами данных
+  - name: Clients
+    description: Управление клиентами и проектами
+  - name: Nomenclature
+    description: Обработка номенклатуры
+
+paths:
+  /api/v1/health:
+    get:
+      tags:
+        - Health
+      summary: Проверка состояния сервера
+      description: Возвращает статус сервера и информацию о версии
+      operationId: getHealth
+      responses:
+        '200':
+          description: Сервер работает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/upload/handshake:
+    post:
+      tags:
+        - Uploads
+      summary: Создание новой выгрузки (рукопожатие)
+      description: |
+        Создает новую выгрузку данных из 1С. Возвращает UUID выгрузки для использования в последующих запросах.
+        
+        Поддерживает:
+        - Итерации выгрузок (parent_upload_id)
+        - Связь с базой данных через database_id
+        - Метаданные о версии 1С и конфигурации
+      operationId: createHandshake
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/HandshakeRequest'
+            examples:
+              basic:
+                summary: Базовый запрос
+                value: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <handshake>
+                    <version_1c>8.3.20</version_1c>
+                    <config_name>Управление торговлей</config_name>
+                    <timestamp>2025-01-15T10:30:00</timestamp>
+                  </handshake>
+              with_database:
+                summary: С привязкой к базе данных
+                value: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <handshake>
+                    <database_id>1</database_id>
+                    <version_1c>8.3.20</version_1c>
+                    <config_name>Управление торговлей</config_name>
+                    <timestamp>2025-01-15T10:30:00</timestamp>
+                  </handshake>
+      responses:
+        '200':
+          description: Выгрузка создана успешно
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/HandshakeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/uploads:
+    get:
+      tags:
+        - Uploads
+      summary: Список всех выгрузок
+      description: |
+        Возвращает список всех выгрузок с их статистикой.
+        
+        Поддерживает пагинацию и фильтрацию.
+      operationId: listUploads
+      parameters:
+        - name: page
+          in: query
+          description: Номер страницы (начиная с 1)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Количество элементов на странице
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: status
+          in: query
+          description: Фильтр по статусу
+          required: false
+          schema:
+            type: string
+            enum: [in_progress, completed]
+        - name: sort
+          in: query
+          description: Поле для сортировки
+          required: false
+          schema:
+            type: string
+            enum: [started_at, completed_at, total_items]
+            default: started_at
+        - name: order
+          in: query
+          description: Направление сортировки
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Список выгрузок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UploadListItem'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/uploads/{uuid}:
+    get:
+      tags:
+        - Uploads
+      summary: Детали выгрузки
+      description: Возвращает детальную информацию о выгрузке, включая список справочников и констант
+      operationId: getUploadDetails
+      parameters:
+        - $ref: '#/components/parameters/UUID'
+      responses:
+        '200':
+          description: Детали выгрузки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/uploads/{uuid}/data:
+    get:
+      tags:
+        - Uploads
+      summary: Получение данных выгрузки
+      description: |
+        Возвращает данные выгрузки в формате XML.
+        
+        Поддерживает фильтрацию по типу данных и именам справочников.
+        Поддерживает пагинацию.
+      operationId: getUploadData
+      parameters:
+        - $ref: '#/components/parameters/UUID'
+        - name: type
+          in: query
+          description: Тип данных для получения
+          required: false
+          schema:
+            type: string
+            enum: [all, constants, catalogs]
+            default: all
+        - name: catalog_names
+          in: query
+          description: Фильтр по именам справочников (через запятую)
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Номер страницы
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Количество элементов на странице
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Данные выгрузки
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/uploads/{uuid}/stream:
+    get:
+      tags:
+        - Uploads
+      summary: Потоковая передача данных (SSE)
+      description: |
+        Возвращает данные выгрузки через Server-Sent Events (SSE).
+        
+        Подходит для больших объемов данных, так как не требует загрузки всех данных в память.
+      operationId: streamUploadData
+      parameters:
+        - $ref: '#/components/parameters/UUID'
+        - name: type
+          in: query
+          description: Тип данных для получения
+          required: false
+          schema:
+            type: string
+            enum: [all, constants, catalogs]
+            default: all
+        - name: catalog_names
+          in: query
+          description: Фильтр по именам справочников (через запятую)
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Поток данных
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/databases/list:
+    get:
+      tags:
+        - Database
+      summary: Список баз данных
+      description: Возвращает список всех доступных баз данных
+      operationId: listDatabases
+      responses:
+        '200':
+          description: Список баз данных
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  databases:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DatabaseInfo'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/databases/analytics:
+    get:
+      tags:
+        - Database
+      summary: Аналитика базы данных
+      description: Возвращает статистику и аналитику по указанной базе данных
+      operationId: getDatabaseAnalytics
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: Путь к файлу базы данных
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Аналитика базы данных
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseAnalytics'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/normalization/start:
+    post:
+      tags:
+        - Normalization
+      summary: Запуск нормализации
+      description: Запускает процесс нормализации данных
+      operationId: startNormalization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NormalizeRequest'
+      responses:
+        '200':
+          description: Нормализация запущена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/normalization/status:
+    get:
+      tags:
+        - Normalization
+      summary: Статус нормализации
+      description: Возвращает текущий статус процесса нормализации
+      operationId: getNormalizationStatus
+      responses:
+        '200':
+          description: Статус нормализации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormalizationStatus'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/classification/classify:
+    post:
+      tags:
+        - Classification
+      summary: Классификация товара
+      description: Классифицирует товар с использованием AI
+      operationId: classifyItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassificationRequest'
+      responses:
+        '200':
+          description: Результат классификации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/config:
+    get:
+      tags:
+        - Workers
+      summary: Получить конфигурацию воркеров
+      description: Возвращает текущую конфигурацию AI провайдеров и моделей
+      operationId: getWorkerConfig
+      responses:
+        '200':
+          description: Конфигурация воркеров
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerConfig'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/config/update:
+    post:
+      tags:
+        - Workers
+      summary: Обновить конфигурацию воркеров
+      description: Обновляет конфигурацию провайдера, модели или глобальные настройки
+      operationId: updateWorkerConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerConfigUpdateRequest'
+      responses:
+        '200':
+          description: Конфигурация обновлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/workers/arliai/status:
+    get:
+      tags:
+        - Workers
+      summary: Проверить статус подключения Arliai
+      description: Проверяет статус подключения к Arliai API и валидность API ключа
+      operationId: checkArliaiStatus
+      responses:
+        '200':
+          description: Статус подключения
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArliaiStatusResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/quality/stats:
+    get:
+      tags:
+        - Quality
+      summary: Статистика качества данных
+      description: Возвращает статистику качества данных для текущей базы данных
+      operationId: getQualityStats
+      responses:
+        '200':
+          description: Статистика качества
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityStats'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/quality/violations:
+    get:
+      tags:
+        - Quality
+      summary: Список нарушений качества
+      description: Возвращает список нарушений качества данных с поддержкой пагинации и фильтрации
+      operationId: getQualityViolations
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, resolved, ignored]
+      responses:
+        '200':
+          description: Список нарушений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  violations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QualityViolation'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/quality/violations/{id}:
+    post:
+      tags:
+        - Quality
+      summary: Разрешить нарушение качества
+      description: Помечает нарушение качества как разрешенное
+      operationId: resolveQualityViolation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolved_by:
+                  type: string
+      responses:
+        '200':
+          description: Нарушение разрешено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/kpved/hierarchy:
+    get:
+      tags:
+        - KPVED
+      summary: Иерархия КПВЭД
+      description: Возвращает иерархическую структуру КПВЭД классификатора
+      operationId: getKpvedHierarchy
+      parameters:
+        - name: code
+          in: query
+          description: Код КПВЭД для получения поддерева
+          schema:
+            type: string
+        - name: depth
+          in: query
+          description: Глубина иерархии
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 3
+      responses:
+        '200':
+          description: Иерархия КПВЭД
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KpvedHierarchy'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/kpved/search:
+    get:
+      tags:
+        - KPVED
+      summary: Поиск по КПВЭД
+      description: Поиск кодов КПВЭД по названию или коду
+      operationId: searchKpved
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: Поисковый запрос
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Результаты поиска
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KpvedCode'
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/kpved/classify-test:
+    post:
+      tags:
+        - KPVED
+      summary: Тестовая классификация по КПВЭД
+      description: Классифицирует одно название товара по КПВЭД
+      operationId: testKpvedClassification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - normalized_name
+              properties:
+                normalized_name:
+                  type: string
+                  description: Нормализованное название товара
+      responses:
+        '200':
+          description: Результат классификации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KpvedClassificationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/kpved/reclassify:
+    post:
+      tags:
+        - KPVED
+      summary: Переклассификация по КПВЭД
+      description: Переклассифицирует существующие группы без КПВЭД кода
+      operationId: reclassifyKpved
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  description: Количество групп для переклассификации (0 = все)
+                  default: 10
+      responses:
+        '200':
+          description: Результат переклассификации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReclassificationResult'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/reclassification/start:
+    post:
+      tags:
+        - Reclassification
+      summary: Запуск переклассификации
+      description: Запускает процесс переклассификации товаров
+      operationId: startReclassification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReclassificationStartRequest'
+      responses:
+        '200':
+          description: Переклассификация запущена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/reclassification/status:
+    get:
+      tags:
+        - Reclassification
+      summary: Статус переклассификации
+      description: Возвращает текущий статус процесса переклассификации
+      operationId: getReclassificationStatus
+      responses:
+        '200':
+          description: Статус переклассификации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReclassificationStatus'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/patterns/detect:
+    post:
+      tags:
+        - Patterns
+      summary: Обнаружение паттернов
+      description: Обнаруживает паттерны в названии товара
+      operationId: detectPatterns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Название товара
+                use_ai:
+                  type: boolean
+                  description: Использовать AI для улучшения
+                  default: false
+      responses:
+        '200':
+          description: Обнаруженные паттерны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatternDetectionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/monitoring/metrics:
+    get:
+      tags:
+        - Monitoring
+      summary: Метрики производительности
+      description: Возвращает метрики производительности сервера
+      operationId: getMonitoringMetrics
+      responses:
+        '200':
+          description: Метрики производительности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringMetrics'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    UUID:
+      name: uuid
+      in: path
+      required: true
+      description: UUID выгрузки
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+        code:
+          type: string
+          description: Код ошибки
+        details:
+          type: object
+          description: Дополнительные детали ошибки
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        version:
+          type: string
+          example: "1.0.0"
+        uptime:
+          type: integer
+          description: Время работы сервера в секундах
+
+    HandshakeRequest:
+      type: object
+      xml:
+        name: handshake
+      properties:
+        database_id:
+          type: string
+          description: ID базы данных (опционально)
+        version_1c:
+          type: string
+          description: Версия 1С
+          example: "8.3.20"
+        config_name:
+          type: string
+          description: Имя конфигурации 1С
+          example: "Управление торговлей"
+        config_version:
+          type: string
+          description: Версия конфигурации (опционально)
+        timestamp:
+          type: string
+          format: date-time
+          description: Временная метка запроса
+
+    HandshakeResponse:
+      type: object
+      xml:
+        name: handshake_response
+      required:
+        - success
+        - upload_uuid
+      properties:
+        success:
+          type: boolean
+        upload_uuid:
+          type: string
+          format: uuid
+          description: UUID созданной выгрузки
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    UploadListItem:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [in_progress, completed]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        version_1c:
+          type: string
+        config_name:
+          type: string
+        total_constants:
+          type: integer
+        total_catalogs:
+          type: integer
+        total_items:
+          type: integer
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    UploadDetails:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        catalogs:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              synonym:
+                type: string
+              item_count:
+                type: integer
+        constants:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              synonym:
+                type: string
+              type:
+                type: string
+
+    DataResponse:
+      type: object
+      xml:
+        name: data_response
+      properties:
+        upload_uuid:
+          type: string
+          format: uuid
+        type:
+          type: string
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            xml:
+              name: item
+
+    DatabaseInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        size:
+          type: integer
+          description: Размер файла в байтах
+        modified_at:
+          type: string
+          format: date-time
+        is_current:
+          type: boolean
+
+    DatabaseAnalytics:
+      type: object
+      properties:
+        total_size:
+          type: integer
+          description: Общий размер базы данных в байтах
+        table_count:
+          type: integer
+        table_stats:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              row_count:
+                type: integer
+              size:
+                type: integer
+
+    NormalizeRequest:
+      type: object
+      properties:
+        use_ai:
+          type: boolean
+          description: Использовать AI для нормализации
+        min_confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 0.7
+        rate_limit_delay_ms:
+          type: integer
+          description: Задержка между запросами в миллисекундах
+          default: 100
+        max_retries:
+          type: integer
+          default: 3
+        model:
+          type: string
+          description: Модель AI для использования
+
+    NormalizationStatus:
+      type: object
+      properties:
+        isRunning:
+          type: boolean
+        progress:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+        processed:
+          type: integer
+        total:
+          type: integer
+        success:
+          type: integer
+        errors:
+          type: integer
+        currentStep:
+          type: string
+        logs:
+          type: array
+          items:
+            type: string
+        startTime:
+          type: string
+          format: date-time
+        elapsedTime:
+          type: string
+        rate:
+          type: number
+          format: float
+
+    ClassificationRequest:
+      type: object
+      required:
+        - item_name
+      properties:
+        item_name:
+          type: string
+          description: Название товара для классификации
+        description:
+          type: string
+          description: Описание товара (опционально)
+        context:
+          type: object
+          description: Дополнительный контекст
+
+    ClassificationResponse:
+      type: object
+      properties:
+        category_path:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        reasoning:
+          type: string
+
+    WorkerConfig:
+      type: object
+      properties:
+        providers:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ProviderConfig'
+        default_provider:
+          type: string
+        default_model:
+          type: string
+        global_max_workers:
+          type: integer
+
+    ProviderConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        base_url:
+          type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+          description: Меньшее значение = выше приоритет
+        max_workers:
+          type: integer
+        rate_limit:
+          type: integer
+          description: Лимит запросов в минуту
+        timeout:
+          type: string
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelConfig'
+
+    ModelConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        provider:
+          type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        max_tokens:
+          type: integer
+        temperature:
+          type: number
+          format: float
+        speed:
+          type: string
+        quality:
+          type: string
+
+    WorkerConfigUpdateRequest:
+      type: object
+      required:
+        - action
+        - data
+      properties:
+        action:
+          type: string
+          enum:
+            - update_provider
+            - update_model
+            - set_default_provider
+            - set_default_model
+            - set_max_workers
+        data:
+          type: object
+          description: Данные в зависимости от action
+
+    ArliaiStatusResponse:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        provider:
+          type: string
+        has_api_key:
+          type: boolean
+        model:
+          type: string
+        enabled:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+
+    QualityStats:
+      type: object
+      properties:
+        total_items:
+          type: integer
+        normalized_items:
+          type: integer
+        quality_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+        violations_count:
+          type: integer
+        duplicates_count:
+          type: integer
+
+    QualityViolation:
+      type: object
+      properties:
+        id:
+          type: integer
+        rule_name:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        status:
+          type: string
+          enum: [open, resolved, ignored]
+        item_id:
+          type: integer
+        item_name:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolved_by:
+          type: string
+          nullable: true
+
+    KpvedHierarchy:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        level:
+          type: integer
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/KpvedHierarchy'
+
+    KpvedCode:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        level:
+          type: integer
+        parent_code:
+          type: string
+          nullable: true
+
+    KpvedClassificationResult:
+      type: object
+      properties:
+        normalized_name:
+          type: string
+        kpved_code:
+          type: string
+        kpved_name:
+          type: string
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        reasoning:
+          type: string
+
+    ReclassificationResult:
+      type: object
+      properties:
+        classified:
+          type: integer
+        failed:
+          type: integer
+        total_duration:
+          type: integer
+          description: Общее время в миллисекундах
+        avg_duration:
+          type: integer
+        avg_steps:
+          type: number
+          format: float
+        avg_ai_calls:
+          type: number
+          format: float
+        total_ai_calls:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+
+    ReclassificationStartRequest:
+      type: object
+      properties:
+        limit:
+          type: integer
+          description: Количество групп для переклассификации (0 = все)
+          default: 0
+        use_hierarchical:
+          type: boolean
+          description: Использовать иерархическую классификацию
+          default: false
+
+    ReclassificationStatus:
+      type: object
+      properties:
+        isRunning:
+          type: boolean
+        progress:
+          type: number
+          format: float
+        processed:
+          type: integer
+        total:
+          type: integer
+        success:
+          type: integer
+        errors:
+          type: integer
+        currentStep:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+
+    PatternDetectionResult:
+      type: object
+      properties:
+        original_name:
+          type: string
+        detected_patterns:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              pattern:
+                type: string
+              confidence:
+                type: number
+                format: float
+        algorithmic_fix:
+          type: string
+        ai_suggested_fix:
+          type: string
+          nullable: true
+        final_suggestion:
+          type: string
+        confidence:
+          type: number
+          format: float
+        reasoning:
+          type: string
+          nullable: true
+
+    MonitoringMetrics:
+      type: object
+      properties:
+        uptime:
+          type: integer
+          description: Время работы в секундах
+        total_requests:
+          type: integer
+        requests_per_second:
+          type: number
+          format: float
+        average_response_time:
+          type: number
+          format: float
+        memory_usage:
+          type: object
+          properties:
+            used:
+              type: integer
+            total:
+              type: integer
+        database_connections:
+          type: integer
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API ключ для аутентификации (если требуется)
+
+security:
+  - ApiKeyAuth: []
+

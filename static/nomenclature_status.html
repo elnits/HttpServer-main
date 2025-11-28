@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мониторинг обработки номенклатуры</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .card { transition: transform 0.2s; height: 100%; }
+        .card:hover { transform: translateY(-5px); }
+        .progress { height: 10px; }
+        #progressChart { max-height: 300px; }
+        .table-responsive { max-height: 400px; }
+        .last-updated { font-size: 0.8rem; color: #6c757d; }
+        .thread-status { display: flex; align-items: center; margin-bottom: 10px; }
+        .thread-indicator { width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; }
+        .thread-active { background-color: #28a745; animation: pulse 1.5s infinite; }
+        .thread-idle { background-color: #6c757d; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .dark-mode { background-color: #212529; color: #f8f9fa; }
+        .dark-mode .card { background-color: #343a40; color: #f8f9fa; }
+        .dark-mode .table { color: #f8f9fa; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3"><i class="fas fa-database me-2"></i>Мониторинг обработки номенклатуры</h1>
+            <div>
+                <button class="btn btn-sm btn-outline-secondary me-2" id="themeToggle"><i class="fas fa-moon"></i> Тема</button>
+                <button class="btn btn-sm btn-outline-primary" id="refreshBtn"><i class="fas fa-sync-alt"></i> Обновить</button>
+            </div>
+        </div>
+        <div class="row mb-4">
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div><h4 class="card-title" id="totalRecords">0</h4><p class="card-text">Всего записей</p></div>
+                            <div class="align-self-center"><i class="fas fa-table fa-2x"></i></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div><h4 class="card-title" id="processedRecords">0</h4><p class="card-text">Обработано</p></div>
+                            <div class="align-self-center"><i class="fas fa-check-circle fa-2x"></i></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card bg-warning text-dark">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div><h4 class="card-title" id="pendingRecords">0</h4><p class="card-text">Ожидают обработки</p></div>
+                            <div class="align-self-center"><i class="fas fa-clock fa-2x"></i></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card bg-danger text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div><h4 class="card-title" id="errorRecords">0</h4><p class="card-text">С ошибками</p></div>
+                            <div class="align-self-center"><i class="fas fa-exclamation-circle fa-2x"></i></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0"><i class="fas fa-tasks me-2"></i>Статус обработки</h5>
+                        <span class="badge bg-success d-none" id="processingBadge">Активна</span>
+                        <span class="badge bg-secondary" id="idleBadge">Не активна</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Прогресс обработки</span>
+                                <span id="progressPercent">0%</span>
+                            </div>
+                            <div class="progress">
+                                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="text-center mt-2">
+                                <span id="progressText">Обработано <strong>0</strong> из <strong>0</strong> записей</span>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center py-3">
+                                        <h6>Время начала</h6>
+                                        <p class="mb-0" id="startTime">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center py-3">
+                                        <h6>Прошедшее время</h6>
+                                        <p class="mb-0" id="elapsedTime">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center py-3">
+                                        <h6>Оставшееся время</h6>
+                                        <p class="mb-0" id="remainingTime">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0"><i class="fas fa-chart-line me-2"></i>График прогресса обработки</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="progressChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0"><i class="fas fa-microchip me-2"></i>Потоки обработки</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="thread-status">
+                            <div class="thread-indicator thread-idle" id="thread1Indicator"></div>
+                            <div><strong>Поток 1</strong><div class="text-muted small" id="thread1Status">Ожидание</div></div>
+                        </div>
+                        <div class="thread-status">
+                            <div class="thread-indicator thread-idle" id="thread2Indicator"></div>
+                            <div><strong>Поток 2</strong><div class="text-muted small" id="thread2Status">Ожидание</div></div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="d-flex justify-content-between">
+                                <span>Скорость обработки:</span>
+                                <span id="processingSpeed">0 записей/мин</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0"><i class="fas fa-cogs me-2"></i>Управление обработкой</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-success" id="startBtn"><i class="fas fa-play me-2"></i>Запустить обработку</button>
+                            <button class="btn btn-warning" id="stopBtn" disabled><i class="fas fa-stop me-2"></i>Остановить обработку</button>
+                        </div>
+                        <div class="mt-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                                <label class="form-check-label" for="autoRefresh">Автообновление (каждые 5 сек)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="fas fa-clock me-2"></i>Необработанные номенклатуры</h5>
+                <div>
+                    <span class="badge bg-warning me-2" id="pendingCountBadge">0 записей</span>
+                    <button class="btn btn-sm btn-success" id="startProcessingBtn">
+                        <i class="fas fa-play me-1"></i>Запустить обработку
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Наименование</th>
+                                <th>Статус</th>
+                                <th>Дата создания</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pendingRecords">
+                            <tr><td colspan="4" class="text-center text-muted">Загрузка данных...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-3 d-flex justify-content-between align-items-center">
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" id="prevPageBtn" disabled>
+                            <i class="fas fa-chevron-left"></i> Назад
+                        </button>
+                        <span class="mx-2" id="pageInfo">Страница 1</span>
+                        <button class="btn btn-sm btn-outline-secondary" id="nextPageBtn">
+                            Вперед <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div>
+                        <span class="text-muted small">Показано: <span id="pendingShown">0</span> из <span id="pendingTotal">0</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="fas fa-history me-2"></i>Последние обработанные записи</h5>
+                <span class="last-updated">Обновлено: <span id="lastUpdateTime">-</span></span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Исходное наименование</th>
+                                <th>Нормализованное наименование</th>
+                                <th>Код КПВЭД</th>
+                                <th>Статус</th>
+                                <th>Время обработки</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentRecords">
+                            <tr><td colspan="6" class="text-center text-muted">Загрузка данных...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        let refreshInterval, progressChart, processingActive = false, progressData = { labels: [], values: [] };
+        let pendingPage = 0;
+        const pendingPageSize = 50;
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeChart();
+            loadData();
+            setupEventListeners();
+            startAutoRefresh();
+        });
+        function initializeChart() {
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            progressChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: progressData.labels, datasets: [{
+                    label: 'Прогресс обработки (%)',
+                    data: progressData.values,
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    tension: 0.3,
+                    fill: true
+                }]},
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, max: 100, ticks: { callback: function(value) { return value + '%'; } } } }
+                }
+            });
+        }
+        function setupEventListeners() {
+            document.getElementById('refreshBtn').addEventListener('click', loadData);
+            document.getElementById('startBtn').addEventListener('click', startProcessing);
+            document.getElementById('startProcessingBtn').addEventListener('click', startProcessing);
+            document.getElementById('stopBtn').addEventListener('click', stopProcessing);
+            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+            document.getElementById('autoRefresh').addEventListener('change', toggleAutoRefresh);
+            document.getElementById('prevPageBtn').addEventListener('click', () => {
+                if (pendingPage > 0) {
+                    pendingPage--;
+                    loadPendingRecords();
+                }
+            });
+            document.getElementById('nextPageBtn').addEventListener('click', () => {
+                pendingPage++;
+                loadPendingRecords();
+            });
+        }
+        function loadData() {
+            fetch('/api/nomenclature/status')
+                .then(response => response.json())
+                .then(data => updateUI(data))
+                .catch(error => { console.error('Ошибка загрузки данных:', error); showError('Не удалось загрузить данные'); });
+            loadRecentRecords();
+            loadPendingRecords();
+        }
+        function loadPendingRecords() {
+            const offset = pendingPage * pendingPageSize;
+            fetch(`/api/nomenclature/pending?limit=${pendingPageSize}&offset=${offset}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Ошибка загрузки необработанных записей');
+                    return response.json();
+                })
+                .then(data => {
+                    updatePendingRecordsTable(data.records);
+                    updatePendingPagination(data.total, data.records.length);
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки необработанных записей:', error);
+                    const tbody = document.getElementById('pendingRecords');
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
+                });
+        }
+        function updatePendingRecordsTable(records) {
+            const tbody = document.getElementById('pendingRecords');
+            if (!records || records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Нет необработанных записей</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            records.forEach(record => {
+                const statusBadge = '<span class="badge bg-warning">Ожидает обработки</span>';
+                const createdAt = new Date(record.created_at).toLocaleString();
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${record.id}</td>
+                    <td>${escapeHtml(record.original_name || '-')}</td>
+                    <td>${statusBadge}</td>
+                    <td>${createdAt}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        function updatePendingPagination(total, shown) {
+            document.getElementById('pendingTotal').textContent = total;
+            document.getElementById('pendingShown').textContent = shown;
+            document.getElementById('pendingCountBadge').textContent = `${total} записей`;
+            
+            const totalPages = Math.ceil(total / pendingPageSize);
+            const currentPage = pendingPage + 1;
+            document.getElementById('pageInfo').textContent = `Страница ${currentPage} из ${totalPages || 1}`;
+            
+            document.getElementById('prevPageBtn').disabled = pendingPage === 0;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages || shown < pendingPageSize;
+        }
+        function loadRecentRecords() {
+            fetch('/api/nomenclature/recent?limit=15')
+                .then(response => {
+                    if (!response.ok) throw new Error('Ошибка загрузки последних записей');
+                    return response.json();
+                })
+                .then(data => updateRecentRecordsTable(data.records))
+                .catch(error => {
+                    console.error('Ошибка загрузки последних записей:', error);
+                    const tbody = document.getElementById('recentRecords');
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Ошибка загрузки данных</td></tr>';
+                });
+        }
+        function updateRecentRecordsTable(records) {
+            const tbody = document.getElementById('recentRecords');
+            if (!records || records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Нет обработанных записей</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            records.forEach(record => {
+                const statusBadge = record.status === 'completed' ? 
+                    '<span class="badge bg-success">Успешно</span>' : 
+                    '<span class="badge bg-danger">Ошибка</span>';
+                const processedAt = record.processed_at ? 
+                    new Date(record.processed_at).toLocaleString() : '-';
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${record.id}</td>
+                    <td>${escapeHtml(record.original_name || '-')}</td>
+                    <td>${escapeHtml(record.normalized_name || '-')}</td>
+                    <td>${escapeHtml(record.kpved_code || '-')}${record.kpved_name ? '<br><small class="text-muted">' + escapeHtml(record.kpved_name) + '</small>' : ''}</td>
+                    <td>${statusBadge}</td>
+                    <td>${processedAt}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        function updateUI(data) {
+            document.getElementById('totalRecords').textContent = data.db_stats.total.toLocaleString();
+            document.getElementById('processedRecords').textContent = data.db_stats.completed.toLocaleString();
+            document.getElementById('pendingRecords').textContent = data.db_stats.pending.toLocaleString();
+            document.getElementById('errorRecords').textContent = data.db_stats.errors.toLocaleString();
+            processingActive = data.processing;
+            if (processingActive) {
+                document.getElementById('processingBadge').classList.remove('d-none');
+                document.getElementById('idleBadge').classList.add('d-none');
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('startProcessingBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+            } else {
+                document.getElementById('processingBadge').classList.add('d-none');
+                document.getElementById('idleBadge').classList.remove('d-none');
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('startProcessingBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+            }
+            if (data.current_stats) {
+                const stats = data.current_stats;
+                const progressPercent = stats.total > 0 ? Math.floor((stats.processed / stats.total) * 100) : 0;
+                document.getElementById('progressPercent').textContent = progressPercent + '%';
+                document.getElementById('progressBar').style.width = progressPercent + '%';
+                document.getElementById('progressText').innerHTML = `Обработано <strong>${stats.processed.toLocaleString()}</strong> из <strong>${stats.total.toLocaleString()}</strong> записей`;
+                document.getElementById('startTime').textContent = new Date(stats.start_time).toLocaleString();
+                const elapsed = Math.floor((Date.now() - new Date(stats.start_time).getTime()) / 1000);
+                document.getElementById('elapsedTime').textContent = formatTime(elapsed);
+                if (progressPercent < 100 && stats.processed > 0) {
+                    const remaining = Math.floor((elapsed * (stats.total - stats.processed)) / stats.processed);
+                    document.getElementById('remainingTime').textContent = formatTime(remaining);
+                } else {
+                    document.getElementById('remainingTime').textContent = '-';
+                }
+                const speed = stats.processed > 0 ? Math.floor((stats.processed / elapsed) * 60) : 0;
+                document.getElementById('processingSpeed').textContent = speed > 0 ? speed + ' записей/мин' : '0 записей/мин';
+                updateProgressChart(progressPercent);
+                const threadActive = processingActive;
+                const maxWorkers = stats.max_workers || 2;
+                // Обновляем статус потоков в зависимости от max_workers
+                for (let i = 1; i <= 2; i++) {
+                    const indicator = document.getElementById(`thread${i}Indicator`);
+                    const status = document.getElementById(`thread${i}Status`);
+                    if (i <= maxWorkers) {
+                        if (threadActive) {
+                            indicator.classList.add('thread-active');
+                            indicator.classList.remove('thread-idle');
+                            status.textContent = 'Активен';
+                        } else {
+                            indicator.classList.remove('thread-active');
+                            indicator.classList.add('thread-idle');
+                            status.textContent = 'Ожидание';
+                        }
+                    } else {
+                        indicator.classList.remove('thread-active');
+                        indicator.classList.add('thread-idle');
+                        status.textContent = 'Не используется';
+                    }
+                }
+            } else {
+                document.getElementById('progressPercent').textContent = '0%';
+                document.getElementById('progressBar').style.width = '0%';
+                document.getElementById('progressText').innerHTML = 'Обработано <strong>0</strong> из <strong>0</strong> записей';
+                document.getElementById('startTime').textContent = '-';
+                document.getElementById('elapsedTime').textContent = '-';
+                document.getElementById('remainingTime').textContent = '-';
+                document.getElementById('processingSpeed').textContent = '0 записей/мин';
+            }
+            document.getElementById('lastUpdateTime').textContent = new Date().toLocaleTimeString();
+        }
+        function updateProgressChart(progress) {
+            const now = new Date();
+            const timeLabel = now.getHours() + ':' + now.getMinutes().toString().padStart(2, '0');
+            progressData.labels.push(timeLabel);
+            progressData.values.push(progress);
+            if (progressData.labels.length > 10) {
+                progressData.labels.shift();
+                progressData.values.shift();
+            }
+            progressChart.update();
+        }
+        function startProcessing() {
+            if (processingActive) {
+                showWarning('Обработка уже запущена');
+                return;
+            }
+            
+            if (!confirm('Запустить обработку необработанных номенклатур?')) {
+                return;
+            }
+            
+            const startBtn = document.getElementById('startBtn');
+            const startProcessingBtn = document.getElementById('startProcessingBtn');
+            const originalText = startBtn.innerHTML;
+            const originalText2 = startProcessingBtn.innerHTML;
+            
+            startBtn.disabled = true;
+            startProcessingBtn.disabled = true;
+            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Запуск...';
+            startProcessingBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Запуск...';
+            
+            fetch('/api/nomenclature/process', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                .then(response => {
+                    if (response.ok) {
+                        showSuccess('Обработка запущена');
+                        setTimeout(() => loadData(), 1000);
+                    } else {
+                        throw new Error('Ошибка запуска обработки');
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка:', error);
+                    showError('Не удалось запустить обработку');
+                    startBtn.disabled = false;
+                    startProcessingBtn.disabled = false;
+                    startBtn.innerHTML = originalText;
+                    startProcessingBtn.innerHTML = originalText2;
+                });
+        }
+        function stopProcessing() {
+            showWarning('Функция остановки обработки будет реализована в будущем');
+        }
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const themeIcon = document.querySelector('#themeToggle i');
+            if (document.body.classList.contains('dark-mode')) {
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+            } else {
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+            }
+        }
+        function startAutoRefresh() {
+            refreshInterval = setInterval(() => {
+                if (document.getElementById('autoRefresh').checked) { loadData(); }
+            }, 5000);
+        }
+        function toggleAutoRefresh() {
+            if (document.getElementById('autoRefresh').checked) { startAutoRefresh(); } else { clearInterval(refreshInterval); }
+        }
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) { return hours + 'ч ' + minutes + 'м'; } else { return minutes + 'м'; }
+        }
+        function showSuccess(message) { console.log('Успех:', message); }
+        function showError(message) { console.error('Ошибка:', message); }
+        function showWarning(message) { console.warn('Предупреждение:', message); }
+    </script>
+</body>
+</html>
+

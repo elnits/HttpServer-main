@@ -1,0 +1,62 @@
+{
+  "timeout_seconds": 7,
+  "max_retries": 3,
+  "retry_delay_seconds": 1,
+  "concurrent_checks": 5,
+  "user_agent": "HTTP-Checker/1.0",
+  "follow_redirects": true,
+  "max_redirects": 5,
+  "headers": {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+  },
+  "urls": [
+    {
+      "url": "http://localhost:9999/health",
+      "method": "GET",
+      "expected_status": 200,
+      "category": "critical",
+      "required_headers": {
+        "Content-Type": "application/json"
+      }
+    },
+    {
+      "url": "http://localhost:9999/api/normalize/status",
+      "method": "GET",
+      "expected_status": 200,
+      "category": "api"
+    },
+    {
+      "url": "http://localhost:9999/api/kpved/hierarchy",
+      "method": "GET",
+      "expected_status": 200,
+      "category": "api"
+    },
+    {
+      "url": "http://localhost:3000",
+      "method": "GET",
+      "expected_status": 200,
+      "category": "frontend"
+    },
+    {
+      "url": "http://localhost:3000/classifiers",
+      "method": "GET",
+      "expected_status": 200,
+      "category": "frontend"
+    }
+  ],
+  "notifications": {
+    "enabled": false,
+    "type": "telegram",
+    "min_severity": "error",
+    "telegram": {
+      "bot_token": "",
+      "chat_id": ""
+    },
+    "webhook": {
+      "url": "",
+      "method": "POST",
+      "headers": {}
+    }
+  }
+}
+

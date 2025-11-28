@@ -1,0 +1,19 @@
+# Пример файла со списком URL для проверки
+# Строки, начинающиеся с #, игнорируются
+
+# Критичные эндпоинты
+http://localhost:9999/health
+http://localhost:9999/api/normalize/status
+
+# API эндпоинты
+http://localhost:9999/api/kpved/hierarchy
+http://localhost:9999/api/kpved/stats
+
+# Frontend
+http://localhost:3000
+http://localhost:3000/classifiers
+
+# Внешние сервисы (примеры)
+# https://api.example.com/status
+# https://cdn.example.com/health
+

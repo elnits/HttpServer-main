@@ -1,0 +1,53 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: httpserver-backend
+    ports:
+      - "9999:9999"
+    environment:
+      - SERVER_PORT=9999
+      - DATABASE_PATH=/app/data/1c_data.db
+      - NORMALIZED_DATABASE_PATH=/app/data/normalized_data.db
+      - SERVICE_DATABASE_PATH=/app/data/service.db
+      - ARLIAI_API_KEY=${ARLIAI_API_KEY:-}
+      - ARLIAI_MODEL=${ARLIAI_MODEL:-GLM-4.5-Air}
+      - MAX_OPEN_CONNS=25
+      - MAX_IDLE_CONNS=5
+      - CONN_MAX_LIFETIME=300s
+    volumes:
+      # Монтируем директорию с данными для сохранения БД между перезапусками
+      - ./data:/app/data
+      # Монтируем базы данных из корня проекта (если они там есть)
+      - ./1c_data.db:/app/1c_data.db:ro
+      - ./normalized_data.db:/app/normalized_data.db:ro
+      - ./service.db:/app/service.db:ro
+      # Монтируем файлы для генерации XML (опционально, для обновления без пересборки)
+      - ./1c_processing:/app/1c_processing:ro
+      - ./1c_module_extensions.bsl:/app/1c_module_extensions.bsl:ro
+      - ./1c_export_functions.txt:/app/1c_export_functions.txt:ro
+      # Монтируем файл классификатора КПВЭД
+      - ./КПВЭД.txt:/app/КПВЭД.txt:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: httpserver-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:9999
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    restart: unless-stopped
+

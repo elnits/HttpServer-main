@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<handshake>
+  <database_id>PLACEHOLDER</database_id>
+  <version_1c>8.3.25</version_1c>
+  <config_name>TestConfig</config_name>
+  <config_version>1.0.0</config_version>
+  <computer_name>TEST-PC</computer_name>
+  <user_name>TestUser</user_name>
+  <timestamp>2025-01-16T12:00:00</timestamp>
+  <iteration_number>1</iteration_number>
+  <iteration_label>linked-test</iteration_label>
+  <programmer_name>TestProgrammer</programmer_name>
+  <upload_purpose>Testing database link</upload_purpose>
+</handshake>
+

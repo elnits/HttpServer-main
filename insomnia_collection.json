@@ -1,0 +1,228 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2025-01-15T10:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2023.5.8",
+  "resources": [
+    {
+      "_id": "req_health",
+      "parentId": "fld_health",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "url": "{{ _.base_url }}/api/v1/health",
+      "name": "Health Check",
+      "description": "Проверка состояния сервера",
+      "method": "GET",
+      "body": {},
+      "parameters": [],
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": 1000000000000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_handshake",
+      "parentId": "fld_uploads",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "url": "{{ _.base_url }}/api/v1/upload/handshake",
+      "name": "Create Handshake",
+      "description": "Создание новой выгрузки",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/xml",
+        "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<handshake>\n  <version_1c>8.3.20</version_1c>\n  <config_name>Управление торговлей</config_name>\n  <timestamp>2025-01-15T10:30:00</timestamp>\n</handshake>"
+      },
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/xml"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1000000000000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_list_uploads",
+      "parentId": "fld_uploads",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "url": "{{ _.base_url }}/api/uploads?page=1&limit=50",
+      "name": "List Uploads",
+      "description": "Список всех выгрузок",
+      "method": "GET",
+      "body": {},
+      "parameters": [
+        {
+          "id": "param_page",
+          "name": "page",
+          "value": "1",
+          "description": "Номер страницы"
+        },
+        {
+          "id": "param_limit",
+          "name": "limit",
+          "value": "50",
+          "description": "Количество элементов на странице"
+        }
+      ],
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": 2000000000000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_normalization_start",
+      "parentId": "fld_normalization",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "url": "{{ _.base_url }}/api/normalization/start",
+      "name": "Start Normalization",
+      "description": "Запуск нормализации данных",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"use_ai\": true,\n  \"min_confidence\": 0.7,\n  \"rate_limit_delay_ms\": 100,\n  \"max_retries\": 3,\n  \"model\": \"GLM-4.5-Air\"\n}"
+      },
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1000000000000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_workers_config",
+      "parentId": "fld_workers",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "url": "{{ _.base_url }}/api/workers/config",
+      "name": "Get Worker Config",
+      "description": "Получить конфигурацию воркеров",
+      "method": "GET",
+      "body": {},
+      "parameters": [],
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": 1000000000000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "fld_health",
+      "parentId": "wrk_main",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "name": "Health",
+      "description": "Проверка состояния сервера",
+      "environment": {},
+      "environmentPropertyOrder": null,
+      "metaSortKey": 1000000000000,
+      "_type": "request_group"
+    },
+    {
+      "_id": "fld_uploads",
+      "parentId": "wrk_main",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "name": "Uploads",
+      "description": "Управление выгрузками",
+      "environment": {},
+      "environmentPropertyOrder": null,
+      "metaSortKey": 2000000000000,
+      "_type": "request_group"
+    },
+    {
+      "_id": "fld_normalization",
+      "parentId": "wrk_main",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "name": "Normalization",
+      "description": "Нормализация данных",
+      "environment": {},
+      "environmentPropertyOrder": null,
+      "metaSortKey": 3000000000000,
+      "_type": "request_group"
+    },
+    {
+      "_id": "fld_workers",
+      "parentId": "wrk_main",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "name": "Workers",
+      "description": "Управление воркерами",
+      "environment": {},
+      "environmentPropertyOrder": null,
+      "metaSortKey": 4000000000000,
+      "_type": "request_group"
+    },
+    {
+      "_id": "wrk_main",
+      "parentId": null,
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "name": "HTTP Server API",
+      "description": "RESTful API для работы с выгрузками из 1С",
+      "scope": "collection",
+      "_type": "workspace"
+    },
+    {
+      "_id": "env_base",
+      "parentId": "wrk_main",
+      "modified": 1642234567890,
+      "created": 1642234567890,
+      "name": "Base Environment",
+      "data": {
+        "base_url": "http://localhost:9999"
+      },
+      "dataPropertyOrder": {
+        "&": ["base_url"]
+      },
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1642234567890,
+      "_type": "environment"
+    }
+  ]
+}
+

@@ -1,0 +1,293 @@
+{
+  "info": {
+    "name": "HTTP Server API",
+    "description": "RESTful API для работы с выгрузками из 1С",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "12345678"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Uploads",
+      "item": [
+        {
+          "name": "Create Handshake",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/xml"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<handshake>\n  <version_1c>8.3.20</version_1c>\n  <config_name>Управление торговлей</config_name>\n  <timestamp>2025-01-15T10:30:00</timestamp>\n</handshake>"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/upload/handshake",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "upload", "handshake"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Uploads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/uploads?page=1&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "uploads"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "status",
+                  "value": "completed",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Upload Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/uploads/{{upload_uuid}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "uploads", "{{upload_uuid}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Upload Data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/uploads/{{upload_uuid}}/data?type=all&page=1&limit=100",
+              "host": ["{{base_url}}"],
+              "path": ["api", "uploads", "{{upload_uuid}}", "data"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "all"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Database",
+      "item": [
+        {
+          "name": "List Databases",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/databases/list",
+              "host": ["{{base_url}}"],
+              "path": ["api", "databases", "list"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Database Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/databases/analytics?path=1c_data.db",
+              "host": ["{{base_url}}"],
+              "path": ["api", "databases", "analytics"],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "1c_data.db"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Normalization",
+      "item": [
+        {
+          "name": "Start Normalization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"use_ai\": true,\n  \"min_confidence\": 0.7,\n  \"rate_limit_delay_ms\": 100,\n  \"max_retries\": 3,\n  \"model\": \"GLM-4.5-Air\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/normalization/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "normalization", "start"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Normalization Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/normalization/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "normalization", "status"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Classification",
+      "item": [
+        {
+          "name": "Classify Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_name\": \"Молоток строительный\",\n  \"description\": \"Молоток для строительных работ\",\n  \"context\": {\n    \"category\": \"Инструменты\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/classification/classify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "classification", "classify"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workers",
+      "item": [
+        {
+          "name": "Get Worker Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/workers/config",
+              "host": ["{{base_url}}"],
+              "path": ["api", "workers", "config"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Worker Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update_provider\",\n  \"data\": {\n    \"name\": \"arliai\",\n    \"enabled\": true,\n    \"priority\": 1,\n    \"max_workers\": 4,\n    \"api_key\": \"your-api-key\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/workers/config/update",
+              "host": ["{{base_url}}"],
+              "path": ["api", "workers", "config", "update"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check Arliai Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/workers/arliai/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "workers", "arliai", "status"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9999",
+      "type": "string"
+    },
+    {
+      "key": "upload_uuid",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
+

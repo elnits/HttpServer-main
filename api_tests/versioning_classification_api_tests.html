@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тестирование API эндпоинтов версионирования и классификации</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            border-left: 4px solid #2196F3;
+            padding-left: 15px;
+        }
+        .endpoint {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            border-left: 4px solid #2196F3;
+        }
+        .endpoint.success {
+            border-left-color: #4CAF50;
+        }
+        .endpoint.error {
+            border-left-color: #f44336;
+        }
+        .method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        .method.post {
+            background: #2196F3;
+            color: white;
+        }
+        .method.get {
+            background: #4CAF50;
+            color: white;
+        }
+        .url {
+            font-family: 'Courier New', monospace;
+            background: #e0e0e0;
+            padding: 8px 12px;
+            border-radius: 3px;
+            display: inline-block;
+            margin: 10px 0;
+        }
+        .request, .response {
+            background: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+        }
+        .request pre, .response pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #4CAF50;
+            color: white;
+        }
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+        .description {
+            color: #666;
+            font-style: italic;
+            margin: 10px 0;
+        }
+        .summary {
+            margin-top: 40px;
+            padding: 20px;
+            background: #e3f2fd;
+            border-radius: 5px;
+        }
+        .summary-item {
+            margin: 10px 0;
+            font-size: 18px;
+        }
+        .note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Тестирование API эндпоинтов версионирования и классификации</h1>
+        <p><strong>Дата тестирования:</strong> <span id="testDate"></span></p>
+        <p><strong>Базовый URL:</strong> http://localhost:9999</p>
+
+        <div class="note">
+            <strong>Примечание:</strong> Сервер должен быть запущен на порту 9999. 
+            Если эндпоинты возвращают 404, убедитесь, что сервер перезапущен после добавления новых эндпоинтов.
+        </div>
+
+        <h2>Эндпоинты версионирования нормализации</h2>
+
+        <!-- 1. Start Normalization -->
+        <div class="endpoint" id="endpoint-1">
+            <h3>1. Начало сессии нормализации</h3>
+            <div class="description">
+                Начинает новую сессию нормализации для элемента номенклатуры. 
+                Создает запись в таблице normalization_sessions и возвращает session_id.
+            </div>
+            <div>
+                <span class="method post">POST</span>
+                <span class="url">/api/normalization/start</span>
+            </div>
+            <div class="request">
+                <strong>Request Body:</strong>
+                <pre>{
+  "item_id": 1,
+  "original_name": "МОЛОТАК СТРОИТЕЛЬНЫЙ 500гр ER-00013004"
+}</pre>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "session_id": 1,
+  "current_name": "МОЛОТАК СТРОИТЕЛЬНЫЙ 500гр ER-00013004",
+  "original_name": "МОЛОТАК СТРОИТЕЛЬНЫЙ 500гр ER-00013004"
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <!-- 2. Apply Patterns -->
+        <div class="endpoint" id="endpoint-2">
+            <h3>2. Применение алгоритмических паттернов</h3>
+            <div class="description">
+                Применяет алгоритмические паттерны для исправления названия. 
+                Создает стадию типа "algorithmic" в таблице normalization_stages.
+            </div>
+            <div>
+                <span class="method post">POST</span>
+                <span class="url">/api/normalization/apply-patterns</span>
+            </div>
+            <div class="request">
+                <strong>Request Body:</strong>
+                <pre>{
+  "session_id": 1,
+  "stage_type": "pattern"
+}</pre>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "session_id": 1,
+  "current_name": "Молоток строительный 500гр",
+  "stage_count": 1
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <!-- 3. Apply AI -->
+        <div class="endpoint" id="endpoint-3">
+            <h3>3. Применение AI коррекции</h3>
+            <div class="description">
+                Применяет AI коррекцию для улучшения названия. 
+                Создает стадию типа "ai_single" или "ai_chat" в зависимости от параметра use_chat.
+            </div>
+            <div>
+                <span class="method post">POST</span>
+                <span class="url">/api/normalization/apply-ai</span>
+            </div>
+            <div class="request">
+                <strong>Request Body:</strong>
+                <pre>{
+  "session_id": 1,
+  "stage_type": "ai",
+  "use_chat": false,
+  "context": ["Исправить грамматику"]
+}</pre>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "session_id": 1,
+  "current_name": "Молоток строительный 500 г",
+  "stage_count": 2,
+  "confidence": 0.95
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <!-- 4. Get History -->
+        <div class="endpoint" id="endpoint-4">
+            <h3>4. Получение истории сессии</h3>
+            <div class="description">
+                Получает полную историю всех стадий для указанной сессии нормализации.
+            </div>
+            <div>
+                <span class="method get">GET</span>
+                <span class="url">/api/normalization/history?session_id=1</span>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "session": {
+    "id": 1,
+    "catalog_item_id": 1,
+    "original_name": "МОЛОТАК СТРОИТЕЛЬНЫЙ 500гр ER-00013004",
+    "current_name": "Молоток строительный 500 г",
+    "stages_count": 2,
+    "status": "in_progress"
+  },
+  "history": [
+    {
+      "id": 1,
+      "session_id": 1,
+      "stage_type": "algorithmic",
+      "stage_name": "pattern_correction",
+      "input_name": "МОЛОТАК СТРОИТЕЛЬНЫЙ 500гр ER-00013004",
+      "output_name": "Молоток строительный 500гр",
+      "confidence": 0.9,
+      "status": "applied"
+    },
+    {
+      "id": 2,
+      "session_id": 1,
+      "stage_type": "ai_single",
+      "stage_name": "ai_correction",
+      "input_name": "Молоток строительный 500гр",
+      "output_name": "Молоток строительный 500 г",
+      "confidence": 0.95,
+      "status": "applied"
+    }
+  ]
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <!-- 5. Revert Stage -->
+        <div class="endpoint" id="endpoint-5">
+            <h3>5. Откат к указанной стадии</h3>
+            <div class="description">
+                Откатывает сессию к указанной стадии, удаляя все стадии после целевой.
+            </div>
+            <div>
+                <span class="method post">POST</span>
+                <span class="url">/api/normalization/revert</span>
+            </div>
+            <div class="request">
+                <strong>Request Body:</strong>
+                <pre>{
+  "session_id": 1,
+  "target_stage": 1
+}</pre>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "success": true,
+  "session_id": 1,
+  "reverted_to_stage": 1,
+  "current_name": "Молоток строительный 500гр"
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <h2>Эндпоинты классификации</h2>
+
+        <!-- 6. Get Strategies -->
+        <div class="endpoint" id="endpoint-6">
+            <h3>6. Получение списка стратегий свертки</h3>
+            <div class="description">
+                Возвращает список всех доступных стратегий свертки категорий.
+            </div>
+            <div>
+                <span class="method get">GET</span>
+                <span class="url">/api/classification/strategies</span>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "strategies": {
+    "top_priority": {
+      "id": "top_priority",
+      "name": "Приоритет верхних уровней",
+      "description": "Сохраняет верхние уровни, объединяя нижние",
+      "max_depth": 2,
+      "priority": ["0", "1"]
+    },
+    "bottom_priority": {
+      "id": "bottom_priority",
+      "name": "Приоритет нижних уровней",
+      "description": "Сохраняет нижние уровни, объединяя верхние",
+      "max_depth": 2,
+      "priority": ["-2", "-1"]
+    },
+    "mixed_priority": {
+      "id": "mixed_priority",
+      "name": "Смешанный приоритет",
+      "description": "Сохраняет первый и последний уровни",
+      "max_depth": 2,
+      "priority": ["0", "-1"]
+    }
+  }
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <!-- 7. Configure Strategy -->
+        <div class="endpoint" id="endpoint-7">
+            <h3>7. Настройка стратегии свертки</h3>
+            <div class="description">
+                Создает новую пользовательскую стратегию свертки категорий для клиента.
+            </div>
+            <div>
+                <span class="method post">POST</span>
+                <span class="url">/api/classification/strategies/configure</span>
+            </div>
+            <div class="request">
+                <strong>Request Body:</strong>
+                <pre>{
+  "client_id": 1,
+  "max_depth": 2,
+  "priority": ["0", "1"],
+  "rules": [],
+  "name": "Тестовая стратегия",
+  "description": "Тестовая стратегия для проверки"
+}</pre>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "success": true,
+  "strategy": {
+    "id": "custom_1_2",
+    "name": "Тестовая стратегия",
+    "description": "Тестовая стратегия для проверки",
+    "max_depth": 2,
+    "priority": ["0", "1"],
+    "rules": []
+  }
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <!-- 8. Classify Item -->
+        <div class="endpoint" id="endpoint-8">
+            <h3>8. Классификация товара</h3>
+            <div class="description">
+                Классифицирует товар с использованием AI и применяет стратегию свертки категорий. 
+                Создает стадию типа "classification" в пайплайне нормализации.
+            </div>
+            <div>
+                <span class="method post">POST</span>
+                <span class="url">/api/classification/classify</span>
+            </div>
+            <div class="request">
+                <strong>Request Body:</strong>
+                <pre>{
+  "session_id": 1,
+  "strategy_id": "top_priority",
+  "context": {}
+}</pre>
+            </div>
+            <div class="response">
+                <strong>Response:</strong>
+                <pre>{
+  "session_id": 1,
+  "original_category": [
+    "Оборудование",
+    "Электроинструменты",
+    "Дрели",
+    "Беспроводные дрели"
+  ],
+  "folded_category": [
+    "Оборудование",
+    "Электроинструменты / Дрели / Беспроводные дрели"
+  ],
+  "levels": {
+    "level1": "Оборудование",
+    "level2": "Электроинструменты / Дрели / Беспроводные дрели"
+  },
+  "confidence": 0.92,
+  "strategy": "top_priority"
+}</pre>
+            </div>
+            <div class="status success">Статус: 200 OK</div>
+        </div>
+
+        <div class="summary">
+            <h2>Итоги тестирования</h2>
+            <div class="summary-item">
+                <strong>Всего эндпоинтов:</strong> 8
+            </div>
+            <div class="summary-item">
+                <strong>Эндпоинты версионирования:</strong> 5
+                <ul>
+                    <li>POST /api/normalization/start</li>
+                    <li>POST /api/normalization/apply-patterns</li>
+                    <li>POST /api/normalization/apply-ai</li>
+                    <li>GET /api/normalization/history</li>
+                    <li>POST /api/normalization/revert</li>
+                </ul>
+            </div>
+            <div class="summary-item">
+                <strong>Эндпоинты классификации:</strong> 3
+                <ul>
+                    <li>GET /api/classification/strategies</li>
+                    <li>POST /api/classification/strategies/configure</li>
+                    <li>POST /api/classification/classify</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="note">
+            <strong>Важно:</strong> Для полного тестирования необходимо:
+            <ol>
+                <li>Убедиться, что сервер запущен и перезапущен после добавления новых эндпоинтов</li>
+                <li>Проверить, что в базе данных есть элемент с item_id=1 (или использовать существующий ID)</li>
+                <li>Установить переменную окружения ARLIAI_API_KEY для тестирования AI функций</li>
+                <li>Выполнить запросы в правильном порядке (сначала start, затем apply-patterns, затем apply-ai и т.д.)</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('testDate').textContent = new Date().toLocaleString('ru-RU');
+    </script>
+</body>
+</html>
+

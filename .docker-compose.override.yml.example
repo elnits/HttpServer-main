@@ -1,0 +1,19 @@
+# Пример файла для переопределения настроек docker-compose
+# Скопируйте этот файл в .docker-compose.override.yml и настройте под свои нужды
+
+version: '3.8'
+
+services:
+  backend:
+    # Пример: изменить порт
+    # ports:
+    #   - "8080:9999"
+    
+    # Пример: добавить переменные окружения
+    # environment:
+    #   - ARLIAI_API_KEY=your-api-key-here
+    
+    # Пример: изменить volumes
+    # volumes:
+    #   - ./custom_data:/app/data
+

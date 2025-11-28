@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест XML-only HTTP сервера</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        h2 {
+            color: #555;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .info {
+            color: #17a2b8;
+        }
+        .xml-input {
+            width: 100%;
+            height: 150px;
+            font-family: monospace;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .stat-item {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            color: #6c757d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Тест XML-only HTTP сервера</h1>
+        <p><strong>Сервер:</strong> http://localhost:9998</p>
+        <p><strong>Формат:</strong> XML для всех запросов и ответов</p>
+    </div>
+
+    <div class="container">
+        <h2>📊 Статистика сервера</h2>
+        <button onclick="getStats()">Обновить статистику</button>
+        <div id="stats" class="stats"></div>
+    </div>
+
+    <div class="container">
+        <h2>🤝 Тест рукопожатия</h2>
+        <p>Создает новую выгрузку и получает UUID</p>
+        <button onclick="testHandshake()">Выполнить рукопожатие</button>
+        <div id="handshake-response" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Тест метаинформации</h2>
+        <p>Отправляет метаинформацию о выгрузке</p>
+        <button onclick="testMetadata()">Отправить метаинформацию</button>
+        <div id="metadata-response" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔧 Тест константы</h2>
+        <p>Отправляет константу на сервер</p>
+        <button onclick="testConstant()">Отправить константу</button>
+        <div id="constant-response" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>📁 Тест метаданных справочника</h2>
+        <p>Отправляет метаданные справочника</p>
+        <button onclick="testCatalogMeta()">Отправить метаданные справочника</button>
+        <div id="catalog-meta-response" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>📄 Тест элемента справочника</h2>
+        <p>Отправляет элемент справочника с XML атрибутами и табличными частями</p>
+        <button onclick="testCatalogItem()">Отправить элемент справочника</button>
+        <div id="catalog-item-response" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>✅ Тест завершения выгрузки</h2>
+        <p>Завершает выгрузку</p>
+        <button onclick="testComplete()">Завершить выгрузку</button>
+        <div id="complete-response" class="response"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔍 Пользовательский XML запрос</h2>
+        <p>Отправьте любой XML запрос на любой endpoint</p>
+        <select id="endpoint-select">
+            <option value="/handshake">POST /handshake</option>
+            <option value="/metadata">POST /metadata</option>
+            <option value="/constant">POST /constant</option>
+            <option value="/catalog/meta">POST /catalog/meta</option>
+            <option value="/catalog/item">POST /catalog/item</option>
+            <option value="/complete">POST /complete</option>
+            <option value="/stats">GET /stats</option>
+            <option value="/health">GET /health</option>
+        </select>
+        <textarea id="xml-input" class="xml-input" placeholder="Введите XML..."></textarea>
+        <button onclick="sendCustomRequest()">Отправить запрос</button>
+        <div id="custom-response" class="response"></div>
+    </div>
+
+    <script>
+        let currentUploadUUID = '';
+
+        // Функция для отправки XML запроса
+        async function sendXMLRequest(endpoint, xmlData, method = 'POST') {
+            try {
+                const response = await fetch(`http://localhost:9998${endpoint}`, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/xml; charset=utf-8',
+                        'Accept': 'application/xml'
+                    },
+                    body: xmlData
+                });
+
+                const responseText = await response.text();
+                
+                return {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: responseText,
+                    success: response.ok
+                };
+            } catch (error) {
+                return {
+                    status: 0,
+                    statusText: 'Network Error',
+                    body: error.message,
+                    success: false
+                };
+            }
+        }
+
+        // Функция для отображения ответа
+        function displayResponse(elementId, result) {
+            const element = document.getElementById(elementId);
+            const statusClass = result.success ? 'success' : 'error';
+            
+            element.innerHTML = `<div class="${statusClass}">
+                <strong>Статус:</strong> ${result.status} ${result.statusText}
+                <strong>Ответ:</strong>
+                ${result.body}
+            </div>`;
+        }
+
+        // Получение статистики
+        async function getStats() {
+            const result = await sendXMLRequest('/stats', '', 'GET');
+            
+            if (result.success) {
+                try {
+                    const stats = JSON.parse(result.body);
+                    const statsDiv = document.getElementById('stats');
+                    
+                    statsDiv.innerHTML = `
+                        <div class="stat-item">
+                            <div class="stat-value">${stats.total_uploads || 0}</div>
+                            <div class="stat-label">Всего выгрузок</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${stats.active_uploads || 0}</div>
+                            <div class="stat-label">Активных выгрузок</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${stats.total_constants || 0}</div>
+                            <div class="stat-label">Констант</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${stats.total_catalogs || 0}</div>
+                            <div class="stat-label">Справочников</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${stats.total_items || 0}</div>
+                            <div class="stat-label">Элементов</div>
+                        </div>
+                    `;
+                } catch (e) {
+                    displayResponse('stats', { success: false, status: 200, statusText: 'OK', body: result.body });
+                }
+            } else {
+                displayResponse('stats', result);
+            }
+        }
+
+        // Тест рукопожатия
+        async function testHandshake() {
+            const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<handshake>
+    <version_1c>8.3.25</version_1c>
+    <config_name>TestConfig</config_name>
+    <timestamp>${new Date().toISOString()}</timestamp>
+</handshake>`;
+
+            const result = await sendXMLRequest('/handshake', xmlData);
+            
+            if (result.success) {
+                // Извлекаем UUID из XML ответа
+                const uuidMatch = result.body.match(/<upload_uuid>(.*?)<\/upload_uuid>/);
+                if (uuidMatch) {
+                    currentUploadUUID = uuidMatch[1];
+                    console.log('Получен UUID выгрузки:', currentUploadUUID);
+                }
+            }
+            
+            displayResponse('handshake-response', result);
+        }
+
+        // Тест метаинформации
+        async function testMetadata() {
+            if (!currentUploadUUID) {
+                displayResponse('metadata-response', { 
+                    success: false, 
+                    status: 400, 
+                    statusText: 'Bad Request', 
+                    body: 'Сначала выполните рукопожатие!' 
+                });
+                return;
+            }
+
+            const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+    <upload_uuid>${currentUploadUUID}</upload_uuid>
+    <version_1c>8.3.25</version_1c>
+    <config_name>TestConfig</config_name>
+    <timestamp>${new Date().toISOString()}</timestamp>
+</metadata>`;
+
+            const result = await sendXMLRequest('/metadata', xmlData);
+            displayResponse('metadata-response', result);
+        }
+
+        // Тест константы
+        async function testConstant() {
+            if (!currentUploadUUID) {
+                displayResponse('constant-response', { 
+                    success: false, 
+                    status: 400, 
+                    statusText: 'Bad Request', 
+                    body: 'Сначала выполните рукопожатие!' 
+                });
+                return;
+            }
+
+            const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<constant>
+    <upload_uuid>${currentUploadUUID}</upload_uuid>
+    <name>ТестоваяКонстанта</name>
+    <synonym>ТестоваяКонстанта</synonym>
+    <type>Строка</type>
+    <value>Тестовое значение</value>
+    <timestamp>${new Date().toISOString()}</timestamp>
+</constant>`;
+
+            const result = await sendXMLRequest('/constant', xmlData);
+            displayResponse('constant-response', result);
+        }
+
+        // Тест метаданных справочника
+        async function testCatalogMeta() {
+            if (!currentUploadUUID) {
+                displayResponse('catalog-meta-response', { 
+                    success: false, 
+                    status: 400, 
+                    statusText: 'Bad Request', 
+                    body: 'Сначала выполните рукопожатие!' 
+                });
+                return;
+            }
+
+            const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<catalog_meta>
+    <upload_uuid>${currentUploadUUID}</upload_uuid>
+    <name>ТестовыйСправочник</name>
+    <synonym>ТестовыйСправочник</synonym>
+    <timestamp>${new Date().toISOString()}</timestamp>
+</catalog_meta>`;
+
+            const result = await sendXMLRequest('/catalog/meta', xmlData);
+            displayResponse('catalog-meta-response', result);
+        }
+
+        // Тест элемента справочника
+        async function testCatalogItem() {
+            if (!currentUploadUUID) {
+                displayResponse('catalog-item-response', { 
+                    success: false, 
+                    status: 400, 
+                    statusText: 'Bad Request', 
+                    body: 'Сначала выполните рукопожатие!' 
+                });
+                return;
+            }
+
+            const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<catalog_item>
+    <upload_uuid>${currentUploadUUID}</upload_uuid>
+    <catalog_name>ТестовыйСправочник</catalog_name>
+    <reference>000000001</reference>
+    <code>001</code>
+    <name>Тестовый элемент</name>
+    <attributes>
+        <attributes>
+            <Описание>Тестовое описание</Описание>
+            <Активность>true</Активность>
+        </attributes>
+    </attributes>
+    <table_parts>
+        <table_parts>
+            <ТабличнаяЧасть>
+                <row>
+                    <Колонка1>Значение1</Колонка1>
+                    <Колонка2>Значение2</Колонка2>
+                </row>
+                <row>
+                    <Колонка1>Значение3</Колонка1>
+                    <Колонка2>Значение4</Колонка2>
+                </row>
+            </ТабличнаяЧасть>
+        </table_parts>
+    </table_parts>
+    <timestamp>${new Date().toISOString()}</timestamp>
+</catalog_item>`;
+
+            const result = await sendXMLRequest('/catalog/item', xmlData);
+            displayResponse('catalog-item-response', result);
+        }
+
+        // Тест завершения выгрузки
+        async function testComplete() {
+            if (!currentUploadUUID) {
+                displayResponse('complete-response', { 
+                    success: false, 
+                    status: 400, 
+                    statusText: 'Bad Request', 
+                    body: 'Сначала выполните рукопожатие!' 
+                });
+                return;
+            }
+
+            const xmlData = `<?xml version="1.0" encoding="UTF-8"?>
+<complete>
+    <upload_uuid>${currentUploadUUID}</upload_uuid>
+    <timestamp>${new Date().toISOString()}</timestamp>
+</complete>`;
+
+            const result = await sendXMLRequest('/complete', xmlData);
+            displayResponse('complete-response', result);
+        }
+
+        // Отправка пользовательского запроса
+        async function sendCustomRequest() {
+            const endpoint = document.getElementById('endpoint-select').value;
+            const xmlData = document.getElementById('xml-input').value;
+            
+            if (!xmlData.trim()) {
+                displayResponse('custom-response', { 
+                    success: false, 
+                    status: 400, 
+                    statusText: 'Bad Request', 
+                    body: 'Введите XML данные!' 
+                });
+                return;
+            }
+
+            const method = endpoint === '/stats' || endpoint === '/health' ? 'GET' : 'POST';
+            const result = await sendXMLRequest(endpoint, xmlData, method);
+            displayResponse('custom-response', result);
+        }
+
+        // Автоматическое обновление статистики каждые 5 секунд
+        setInterval(getStats, 5000);
+        
+        // Загружаем статистику при загрузке страницы
+        window.onload = function() {
+            getStats();
+        };
+    </script>
+</body>
+</html>
+
+
