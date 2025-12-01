@@ -13,9 +13,10 @@ type Config struct {
 	Port string
 
 	// Базы данных
-	DatabasePath          string
+	DatabasePath           string
 	NormalizedDatabasePath string
-	ServiceDatabasePath   string
+	ServiceDatabasePath    string
+	UnifiedCatalogsDBPath  string // Путь к единой БД справочников
 
 	// AI конфигурация
 	ArliaiAPIKey string
@@ -43,6 +44,7 @@ func LoadConfig() (*Config, error) {
 		DatabasePath:           getEnv("DATABASE_PATH", "data.db"),
 		NormalizedDatabasePath: getEnv("NORMALIZED_DATABASE_PATH", "normalized_data.db"),
 		ServiceDatabasePath:    getEnv("SERVICE_DATABASE_PATH", "service.db"),
+		UnifiedCatalogsDBPath:  getEnv("UNIFIED_CATALOGS_DB_PATH", "unified_catalogs.db"),
 
 		// AI конфигурация
 		ArliaiAPIKey: os.Getenv("ARLIAI_API_KEY"),
@@ -84,6 +86,10 @@ func (c *Config) Validate() error {
 
 	if c.ServiceDatabasePath == "" {
 		return fmt.Errorf("service database path is required")
+	}
+
+	if c.UnifiedCatalogsDBPath == "" {
+		return fmt.Errorf("unified catalogs database path is required")
 	}
 
 	if c.MaxOpenConns <= 0 {

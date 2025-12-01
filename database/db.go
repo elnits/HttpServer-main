@@ -3275,3 +3275,165 @@ func (db *DB) CleanOldMetrics(retentionDays int) error {
 
 	return nil
 }
+
+// ============================================================================
+// Новые функции для работы с динамическими таблицами справочников
+// ============================================================================
+
+// AddCatalogItemToTable добавляет элемент справочника в динамическую таблицу
+func (db *DB) AddCatalogItemToTable(tableName string, uploadID int, reference, code, name string, attributes, tableParts interface{}) error {
+	var attrsXML, partsXML string
+	
+	// Преобразуем attributes в XML строку
+	if attributes != nil {
+		if str, ok := attributes.(string); ok {
+			attrsXML = str
+		} else {
+			attrsBytes, err := json.Marshal(attributes)
+			if err != nil {
+				return fmt.Errorf("failed to marshal attributes: %w", err)
+			}
+			attrsXML = string(attrsBytes)
+		}
+	}
+	
+	// Преобразуем tableParts в XML строку
+	if tableParts != nil {
+		if str, ok := tableParts.(string); ok {
+			partsXML = str
+		} else {
+			partsBytes, err := json.Marshal(tableParts)
+			if err != nil {
+				return fmt.Errorf("failed to marshal table parts: %w", err)
+			}
+			partsXML = string(partsBytes)
+		}
+	}
+	
+	// Используем транзакцию для атомарности
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	
+	// Формируем динамический SQL запрос (безопасно, так как tableName валидируется)
+	query := fmt.Sprintf(`
+		INSERT INTO %s (upload_id, reference, code, name, attributes_xml, table_parts_xml)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, tableName)
+	
+	_, err = tx.Exec(query, uploadID, reference, code, name, attrsXML, partsXML)
+	if err != nil {
+		return fmt.Errorf("failed to add catalog item to table %s: %w", tableName, err)
+	}
+	
+	// Обновляем счетчик total_items
+	_, err = tx.Exec("UPDATE uploads SET total_items = total_items + 1 WHERE id = ?", uploadID)
+	if err != nil {
+		return fmt.Errorf("failed to update items counter: %w", err)
+	}
+	
+	// Подтверждаем транзакцию
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	
+	log.Printf("✓ Добавлен элемент в таблицу %s (upload_id=%d, reference=%s)", tableName, uploadID, reference)
+	return nil
+}
+
+// GetCatalogItemsFromDynamicTable получает элементы справочника из динамической таблицы (для единой БД)
+func (db *DB) GetCatalogItemsFromDynamicTable(tableName string, uploadID int, offset, limit int) ([]*CatalogItem, error) {
+	// Формируем динамический SQL запрос
+	query := fmt.Sprintf(`
+		SELECT id, upload_id, reference, code, name, attributes_xml, table_parts_xml, created_at
+		FROM %s
+		WHERE upload_id = ?
+		ORDER BY id
+		LIMIT ? OFFSET ?
+	`, tableName)
+	
+	rows, err := db.conn.Query(query, uploadID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get catalog items from table %s: %w", tableName, err)
+	}
+	defer rows.Close()
+	
+	var items []*CatalogItem
+	for rows.Next() {
+		item := &CatalogItem{}
+		err := rows.Scan(
+			&item.ID, &item.CatalogID, &item.Reference, &item.Code, &item.Name,
+			&item.Attributes, &item.TableParts, &item.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan catalog item: %w", err)
+		}
+		// CatalogID используем как upload_id в новой схеме
+		items = append(items, item)
+	}
+	
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating catalog items: %w", err)
+	}
+	
+	return items, nil
+}
+
+// GetCatalogItemsCountFromTable получает количество элементов справочника из динамической таблицы
+func (db *DB) GetCatalogItemsCountFromTable(tableName string, uploadID int) (int, error) {
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE upload_id = ?`, tableName)
+	
+	var count int
+	err := db.conn.QueryRow(query, uploadID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count items in table %s: %w", tableName, err)
+	}
+	
+	return count, nil
+}
+
+// NewUnifiedDBWithConfig создает новое подключение к единой БД справочников
+func NewUnifiedDBWithConfig(dbPath string, config DBConfig) (*DB, error) {
+	conn, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Настройка connection pooling
+	if config.MaxOpenConns > 0 {
+		conn.SetMaxOpenConns(config.MaxOpenConns)
+	} else {
+		conn.SetMaxOpenConns(25)
+	}
+
+	if config.MaxIdleConns > 0 {
+		conn.SetMaxIdleConns(config.MaxIdleConns)
+	} else {
+		conn.SetMaxIdleConns(5)
+	}
+
+	if config.ConnMaxLifetime > 0 {
+		conn.SetConnMaxLifetime(config.ConnMaxLifetime)
+	} else {
+		conn.SetConnMaxLifetime(5 * time.Minute)
+	}
+
+	// Проверяем подключение
+	if err := conn.Ping(); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	db := &DB{conn: conn}
+	
+	// Инициализируем ЕДИНУЮ схему (не старую схему с catalog_items)
+	if err := InitUnifiedSchema(conn); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to initialize unified schema: %w", err)
+	}
+
+	log.Println("✓ Единая БД справочников инициализирована")
+	return db, nil
+}

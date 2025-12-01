@@ -62,8 +62,17 @@ func main() {
 	}
 	defer serviceDB.Close()
 
+	// Создаем единую базу данных для справочников
+	unifiedCatalogsDBPath := config.UnifiedCatalogsDBPath
+	unifiedCatalogsDB, err := database.NewUnifiedDBWithConfig(unifiedCatalogsDBPath, dbConfig)
+	if err != nil {
+		log.Fatalf("Ошибка создания единой базы данных справочников: %v", err)
+	}
+	defer unifiedCatalogsDB.Close()
+	log.Printf("Используется единая база данных справочников: %s", unifiedCatalogsDBPath)
+
 	// Создаем сервер
-	srv := server.NewServerWithConfig(db, normalizedDB, serviceDB, dbPath, normalizedDBPath, config)
+	srv := server.NewServerWithConfig(db, normalizedDB, serviceDB, unifiedCatalogsDB, dbPath, normalizedDBPath, config)
 
 	// Запускаем сервер в горутине
 	go func() {

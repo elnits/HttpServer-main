@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"httpserver/database"
@@ -458,26 +459,75 @@ func (s *Server) handle1CImportGetCatalog(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Находим справочник по имени
-	catalog, err := db.GetCatalogByNameAndUpload(req.CatalogName, upload.ID)
+	// НОВАЯ ЛОГИКА: Получаем имя таблицы для справочника
+	tableName, err := database.GetCatalogTableName(db.GetDB(), req.CatalogName)
 	if err != nil {
-		response := ImportGetCatalogResponse{
-			Success:     false,
-			CatalogName: req.CatalogName,
-			Message:     fmt.Sprintf("Catalog not found: %v", err),
+		// Если таблица не найдена, попробуем старый метод (обратная совместимость)
+		catalog, err := db.GetCatalogByNameAndUpload(req.CatalogName, upload.ID)
+		if err != nil {
+			response := ImportGetCatalogResponse{
+				Success:     false,
+				CatalogName: req.CatalogName,
+				Message:     fmt.Sprintf("Catalog not found: %v", err),
+			}
+			s.writeXMLResponse(w, response)
+			return
 		}
+
+		// Старая логика для файлов БД
+		totalItems, err := db.GetCatalogItemsCount(catalog.ID)
+		if err != nil {
+			totalItems = 0
+		}
+
+		items, err := db.GetCatalogItemsWithPagination(catalog.ID, req.Limit, req.Offset)
+		if err != nil {
+			response := ImportGetCatalogResponse{
+				Success:     false,
+				CatalogName: req.CatalogName,
+				Message:     fmt.Sprintf("Failed to get catalog items: %v", err),
+			}
+			s.writeXMLResponse(w, response)
+			return
+		}
+
+		// Форматируем элементы для ответа
+		var itemsForImport []CatalogItemForImport
+		for _, item := range items {
+			itemsForImport = append(itemsForImport, CatalogItemForImport{
+				Reference:     item.Reference,
+				Code:          item.Code,
+				Name:          item.Name,
+				AttributesXML: item.Attributes,
+				TablePartsXML: item.TableParts,
+				CreatedAt:     item.CreatedAt.Format(time.RFC3339),
+			})
+		}
+
+		response := ImportGetCatalogResponse{
+			Success:     true,
+			CatalogName: req.CatalogName,
+			Items:       itemsForImport,
+			Total:       totalItems,
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+		}
+
 		s.writeXMLResponse(w, response)
 		return
 	}
 
+	// НОВАЯ ЛОГИКА: Используем динамическую таблицу
+	log.Printf("Reading catalog '%s' from table: %s", req.CatalogName, tableName)
+
 	// Получаем общее количество элементов
-	totalItems, err := db.GetCatalogItemsCount(catalog.ID)
+	totalItems, err := db.GetCatalogItemsCountFromTable(tableName, upload.ID)
 	if err != nil {
 		totalItems = 0
 	}
 
 	// Получаем элементы справочника с пагинацией
-	items, err := db.GetCatalogItemsWithPagination(catalog.ID, req.Limit, req.Offset)
+	items, err := db.GetCatalogItemsFromDynamicTable(tableName, upload.ID, req.Offset, req.Limit)
 	if err != nil {
 		response := ImportGetCatalogResponse{
 			Success:     false,
@@ -513,7 +563,7 @@ func (s *Server) handle1CImportGetCatalog(w http.ResponseWriter, r *http.Request
 	s.log(LogEntry{
 		Timestamp:  time.Now(),
 		Level:      "INFO",
-		Message:    fmt.Sprintf("Returned %d items of catalog '%s' from database %s", len(itemsForImport), req.CatalogName, req.DBName),
+		Message:    fmt.Sprintf("Returned %d items of catalog '%s' from table %s", len(itemsForImport), req.CatalogName, tableName),
 		UploadUUID: uploadUUID,
 		Endpoint:   "/api/1c/import/get-catalog",
 	})
@@ -560,6 +610,59 @@ func (s *Server) handle1CImportComplete(w http.ResponseWriter, r *http.Request) 
 func (s *Server) getDatabaseList() ([]DatabaseInfo, error) {
 	var databases []DatabaseInfo
 
+	// НОВАЯ ЛОГИКА: Получаем список выгрузок из единой БД
+	if s.unifiedCatalogsDB == nil {
+		return databases, fmt.Errorf("unified catalogs database not initialized")
+	}
+
+	// Получаем все выгрузки из единой БД
+	uploads, err := s.unifiedCatalogsDB.GetAllUploads()
+	if err != nil {
+		return databases, fmt.Errorf("failed to get uploads: %w", err)
+	}
+
+	// Для каждой выгрузки создаём DatabaseInfo
+	for _, upload := range uploads {
+		info := DatabaseInfo{
+			FileName:      fmt.Sprintf("upload_%s", upload.UploadUUID), // Виртуальное имя файла
+			UploadUUID:    upload.UploadUUID,
+			ConfigName:    upload.ConfigName,
+			StartedAt:     upload.StartedAt.Format(time.RFC3339),
+			TotalCatalogs: upload.TotalCatalogs,
+			TotalConstants: upload.TotalConstants,
+			TotalItems:    upload.TotalItems,
+		}
+
+		// Добавляем опциональные поля
+		if upload.DatabaseID != nil {
+			info.DatabaseID = *upload.DatabaseID
+		}
+		if upload.ClientID != nil {
+			info.ClientID = *upload.ClientID
+		}
+		if upload.ProjectID != nil {
+			info.ProjectID = *upload.ProjectID
+		}
+		info.ComputerName = upload.ComputerName
+		info.UserName = upload.UserName
+		info.ConfigVersion = upload.ConfigVersion
+
+		databases = append(databases, info)
+	}
+
+	// Также поддерживаем старые файлы БД для обратной совместимости
+	oldDatabases, err := s.getOldDatabaseList()
+	if err == nil {
+		databases = append(databases, oldDatabases...)
+	}
+
+	return databases, nil
+}
+
+// getOldDatabaseList получает список старых файлов БД (для обратной совместимости)
+func (s *Server) getOldDatabaseList() ([]DatabaseInfo, error) {
+	var databases []DatabaseInfo
+
 	// Сканируем несколько директорий на наличие .db файлов
 	var allFiles []string
 
@@ -595,8 +698,14 @@ func (s *Server) getDatabaseList() ([]DatabaseInfo, error) {
 		}
 		
 		baseName := filepath.Base(file)
-		// Пропускаем service.db и другие служебные БД
-		if baseName == "service.db" || baseName == "data.db" || baseName == "normalized_data.db" {
+		// Пропускаем служебные БД и единую БД справочников
+		if baseName == "service.db" || baseName == "data.db" || 
+		   baseName == "normalized_data.db" || baseName == "unified_catalogs.db" {
+			continue
+		}
+		
+		// Пропускаем файлы, которые не начинаются с "Выгрузка_"
+		if !strings.HasPrefix(baseName, "Выгрузка_") {
 			continue
 		}
 		
@@ -610,7 +719,7 @@ func (s *Server) getDatabaseList() ([]DatabaseInfo, error) {
 	for _, dbPath := range uniqueFiles {
 		info, err := s.getDatabaseInfo(dbPath)
 		if err != nil {
-			log.Printf("Warning: Failed to get info for database %s: %v", dbPath, err)
+			log.Printf("Warning: Failed to get info for old database %s: %v", dbPath, err)
 			continue
 		}
 		databases = append(databases, info)
@@ -671,9 +780,43 @@ func (s *Server) getDatabaseInfo(dbPath string) (DatabaseInfo, error) {
 	return info, nil
 }
 
-// openDatabaseByName открывает БД по имени файла и возвращает upload_uuid
+// openDatabaseByName открывает БД по имени файла или upload_uuid и возвращает БД и upload_uuid
 func (s *Server) openDatabaseByName(dbName string) (*database.DB, string, error) {
-	// Ищем БД файл в разных директориях
+	// НОВАЯ ЛОГИКА: Проверяем, является ли dbName upload_uuid или виртуальным именем
+	// Формат: "upload_UUID" или просто UUID
+	isUUID := false
+	uploadUUID := dbName
+	
+	// Проверяем формат upload_UUID
+	if strings.HasPrefix(dbName, "upload_") {
+		uploadUUID = strings.TrimPrefix(dbName, "upload_")
+		isUUID = true
+	}
+	
+	// Проверяем формат UUID (8-4-4-4-12 символов с дефисами)
+	if len(uploadUUID) == 36 && strings.Count(uploadUUID, "-") == 4 {
+		isUUID = true
+	}
+	
+	// Если это UUID, работаем с единой БД
+	if isUUID {
+		if s.unifiedCatalogsDB == nil {
+			return nil, "", fmt.Errorf("unified catalogs database not initialized")
+		}
+		
+		// Проверяем что выгрузка существует
+		upload, err := s.unifiedCatalogsDB.GetUploadByUUID(uploadUUID)
+		if err != nil {
+			return nil, "", fmt.Errorf("upload not found: %s", uploadUUID)
+		}
+		
+		log.Printf("Using unified DB for upload: %s", uploadUUID)
+		return s.unifiedCatalogsDB, upload.UploadUUID, nil
+	}
+	
+	// Старая логика: ищем файл БД (обратная совместимость)
+	log.Printf("Looking for old database file: %s", dbName)
+	
 	possiblePaths := []string{
 		dbName,
 		filepath.Join("data", dbName),
@@ -694,7 +837,6 @@ func (s *Server) openDatabaseByName(dbName string) (*database.DB, string, error)
 	}
 
 	// Проверяем кэш uploadDBs - может БД уже открыта
-	// Ищем по имени файла
 	s.uploadDBsMutex.RLock()
 	for uuid, cachedDB := range s.uploadDBs {
 		// Проверяем что это та же БД (по пути или имени файла)
@@ -723,13 +865,14 @@ func (s *Server) openDatabaseByName(dbName string) (*database.DB, string, error)
 		return nil, "", fmt.Errorf("no uploads found in database")
 	}
 
-	uploadUUID := uploads[0].UploadUUID
+	uploadUUID = uploads[0].UploadUUID
 
 	// Добавляем в кэш
 	s.uploadDBsMutex.Lock()
 	s.uploadDBs[uploadUUID] = db
 	s.uploadDBsMutex.Unlock()
 
+	log.Printf("Opened old database file: %s, upload_uuid: %s", dbPath, uploadUUID)
 	return db, uploadUUID, nil
 }
 

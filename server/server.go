@@ -32,6 +32,7 @@ type Server struct {
 	db                      *database.DB
 	normalizedDB            *database.DB
 	serviceDB               *database.ServiceDB
+	unifiedCatalogsDB       *database.DB // Единая БД справочников
 	currentDBPath           string
 	currentNormalizedDBPath string
 	config                  *Config
@@ -95,14 +96,16 @@ func NewServer(db *database.DB, normalizedDB *database.DB, serviceDB *database.S
 		DatabasePath:               dbPath,
 		NormalizedDatabasePath:     normalizedDBPath,
 		ServiceDatabasePath:        "service.db",
+		UnifiedCatalogsDBPath:      "unified_catalogs.db",
 		LogBufferSize:              100,
 		NormalizerEventsBufferSize: 100,
 	}
-	return NewServerWithConfig(db, normalizedDB, serviceDB, dbPath, normalizedDBPath, config)
+	// unifiedCatalogsDB будет nil, так как старый метод не знает о нём
+	return NewServerWithConfig(db, normalizedDB, serviceDB, nil, dbPath, normalizedDBPath, config)
 }
 
 // NewServerWithConfig создает новый сервер с конфигурацией
-func NewServerWithConfig(db *database.DB, normalizedDB *database.DB, serviceDB *database.ServiceDB, dbPath, normalizedDBPath string, config *Config) *Server {
+func NewServerWithConfig(db *database.DB, normalizedDB *database.DB, serviceDB *database.ServiceDB, unifiedCatalogsDB *database.DB, dbPath, normalizedDBPath string, config *Config) *Server {
 	// Создаем канал событий для нормализатора
 	normalizerEvents := make(chan string, config.NormalizerEventsBufferSize)
 
@@ -162,6 +165,7 @@ func NewServerWithConfig(db *database.DB, normalizedDB *database.DB, serviceDB *
 		db:                      db,
 		normalizedDB:            normalizedDB,
 		serviceDB:               serviceDB,
+		unifiedCatalogsDB:       unifiedCatalogsDB, // Единая БД справочников
 		currentDBPath:           dbPath,
 		currentNormalizedDBPath: normalizedDBPath,
 		config:                  config,
@@ -742,36 +746,10 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Определяем тип выгружаемых данных
+	// Определяем тип выгружаемых данных (для логирования)
 	uploadType := req.UploadType
 	if uploadType == "" {
 		uploadType = "ПолнаяВыгрузка"
-	}
-
-	// Формируем имя новой БД
-	dbFileName := generateDatabaseFileName(uploadType, req.ConfigName, req.ComputerName, req.UserName)
-	
-	// Определяем путь к новой БД (в текущей директории)
-	dbPath := dbFileName
-
-	// Создаем конфигурацию для новой БД
-	dbConfig := database.DBConfig{
-		MaxOpenConns:    s.config.MaxOpenConns,
-		MaxIdleConns:    s.config.MaxIdleConns,
-		ConnMaxLifetime: s.config.ConnMaxLifetime,
-	}
-
-	// Создаем новую БД для этой выгрузки
-	uploadDB, err := database.CreateNewDatabaseWithSchema(dbPath, dbConfig)
-	if err != nil {
-		s.writeErrorResponse(w, fmt.Sprintf("Failed to create database: %v", err), err)
-		return
-	}
-
-	// Получаем размер файла БД
-	var dbFileSize int64
-	if fileInfo, err := os.Stat(dbPath); err == nil {
-		dbFileSize = fileInfo.Size()
 	}
 
 	// Устанавливаем значения по умолчанию для полей итераций
@@ -780,86 +758,30 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 		iterationNumber = 1
 	}
 
-	// Создаем выгрузку в НОВОЙ БД (не в текущей s.db)
-	upload, err := uploadDB.CreateUploadWithDatabase(
+	// НОВАЯ ЛОГИКА: Создаем выгрузку в ЕДИНОЙ БД (s.unifiedCatalogsDB)
+	// Вместо создания отдельного файла БД для каждой выгрузки
+	if s.unifiedCatalogsDB == nil {
+		s.writeErrorResponse(w, "Unified catalogs database not initialized", fmt.Errorf("unifiedCatalogsDB is nil"))
+		return
+	}
+
+	upload, err := s.unifiedCatalogsDB.CreateUploadWithDatabase(
 		uploadUUID, req.Version1C, req.ConfigName, databaseID,
 		req.ComputerName, req.UserName, req.ConfigVersion,
 		iterationNumber, req.IterationLabel, req.ProgrammerName, req.UploadPurpose, parentUploadID,
 	)
 	if err != nil {
-		uploadDB.Close()
 		s.writeErrorResponse(w, "Failed to create upload", err)
 		return
 	}
 
-	// Сохраняем БД в кэш
+	// Сохраняем ссылку на единую БД в кэш (для совместимости с существующим кодом)
 	s.uploadDBsMutex.Lock()
-	s.uploadDBs[uploadUUID] = uploadDB
+	s.uploadDBs[uploadUUID] = s.unifiedCatalogsDB
 	s.uploadDBsMutex.Unlock()
 
-	// Регистрируем новую БД в service.db, если есть project_id
-	var registeredDatabaseID int
-	if databaseID != nil {
-		// Получаем project_id из databaseID
-		if s.serviceDB != nil {
-			dbInfo, err := s.serviceDB.GetProjectDatabase(*databaseID)
-			if err == nil && dbInfo != nil {
-				projectID := dbInfo.ClientProjectID
-				// Регистрируем новую БД
-				projectDB, err := s.serviceDB.CreateProjectDatabase(
-					projectID,
-					dbFileName, // имя БД
-					dbPath,     // путь к БД
-					fmt.Sprintf("Автоматически создана для выгрузки %s (тип: %s, конфигурация: %s)", uploadUUID, uploadType, req.ConfigName),
-					dbFileSize,
-				)
-				if err == nil && projectDB != nil {
-					registeredDatabaseID = projectDB.ID
-					// Обновляем database_id в upload
-					_, err = uploadDB.Exec("UPDATE uploads SET database_id = ? WHERE id = ?", registeredDatabaseID, upload.ID)
-					if err != nil {
-						s.log(LogEntry{
-							Timestamp:  time.Now(),
-							Level:      "WARNING",
-							Message:    fmt.Sprintf("Failed to update database_id in upload: %v", err),
-							UploadUUID: uploadUUID,
-							Endpoint:   "/handshake",
-						})
-					}
-				}
-			}
-		}
-	} else {
-		// Если databaseID нет, но есть client_id/project_id из похожей выгрузки
-		if similarUpload != nil {
-			if similarUpload.ClientID != nil && similarUpload.ProjectID != nil {
-				// Получаем project_id из похожей выгрузки
-				projectID := *similarUpload.ProjectID
-				// Регистрируем новую БД
-				projectDB, err := s.serviceDB.CreateProjectDatabase(
-					projectID,
-					dbFileName,
-					dbPath,
-					fmt.Sprintf("Автоматически создана для выгрузки %s (тип: %s, конфигурация: %s)", uploadUUID, uploadType, req.ConfigName),
-					dbFileSize,
-				)
-				if err == nil && projectDB != nil {
-					registeredDatabaseID = projectDB.ID
-					// Обновляем database_id в upload
-					_, err = uploadDB.Exec("UPDATE uploads SET database_id = ? WHERE id = ?", registeredDatabaseID, upload.ID)
-					if err != nil {
-						s.log(LogEntry{
-							Timestamp:  time.Now(),
-							Level:      "WARNING",
-							Message:    fmt.Sprintf("Failed to update database_id in upload: %v", err),
-							UploadUUID: uploadUUID,
-							Endpoint:   "/handshake",
-						})
-					}
-				}
-			}
-		}
-	}
+	// Нет необходимости регистрировать новый файл БД в service.db,
+	// так как теперь все данные в одной БД
 
 	// Обновляем кэшированные значения client_id и project_id
 	if databaseID != nil {
@@ -892,9 +814,9 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Обновляем upload с кэшированными значениями (в новой БД, не в s.db)
+		// Обновляем upload с кэшированными значениями (в единой БД)
 		if clientID > 0 && projectID > 0 {
-			_, err = uploadDB.Exec(`
+			_, err = s.unifiedCatalogsDB.Exec(`
 				UPDATE uploads 
 				SET client_id = ?, project_id = ? 
 				WHERE id = ?
@@ -915,8 +837,8 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 	s.log(LogEntry{
 		Timestamp: time.Now(),
 		Level:     "INFO",
-		Message: fmt.Sprintf("Handshake successful for upload %s (new_db: %s, database_id: %v, registered_db_id: %d, identified_by: %s, iteration_number: %d, iteration_label: %s, programmer: %s, purpose: %s, parent_upload_id: %v)",
-			uploadUUID, dbPath, databaseID, registeredDatabaseID, identifiedBy, upload.IterationNumber, upload.IterationLabel, upload.ProgrammerName, upload.UploadPurpose, upload.ParentUploadID),
+		Message: fmt.Sprintf("Handshake successful for upload %s (unified_db, database_id: %v, identified_by: %s, iteration_number: %d, iteration_label: %s, programmer: %s, purpose: %s, parent_upload_id: %v, upload_type: %s)",
+			uploadUUID, databaseID, identifiedBy, upload.IterationNumber, upload.IterationLabel, upload.ProgrammerName, upload.UploadPurpose, upload.ParentUploadID, uploadType),
 		UploadUUID: uploadUUID,
 		Endpoint:   "/handshake",
 	})
@@ -926,9 +848,9 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 		UploadUUID:   uploadUUID,
 		ClientName:   clientName,
 		ProjectName:  projectName,
-		DatabaseName: dbFileName,
-		DatabasePath: dbPath,
-		DatabaseID:   registeredDatabaseID,
+		DatabaseName: "unified_catalogs.db", // Теперь всегда единая БД
+		DatabasePath: s.config.UnifiedCatalogsDBPath,
+		DatabaseID:   0, // Нет отдельного database_id для файла
 		Message:      "Handshake successful",
 		Timestamp:    time.Now().Format(time.RFC3339),
 	}
@@ -1096,7 +1018,7 @@ func (s *Server) handleCatalogMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем БД для этой выгрузки
+	// Получаем БД для этой выгрузки (теперь всегда единая БД)
 	uploadDB, err := s.getUploadDatabase(req.UploadUUID)
 	if err != nil {
 		s.writeErrorResponse(w, fmt.Sprintf("Failed to get upload database: %v", err), err)
@@ -1110,24 +1032,35 @@ func (s *Server) handleCatalogMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Добавляем справочник
-	catalog, err := uploadDB.AddCatalog(upload.ID, req.Name, req.Synonym)
+	// НОВАЯ ЛОГИКА: Получаем или создаём таблицу для этого справочника
+	tableName, err := database.GetOrCreateCatalogTable(uploadDB.GetDB(), req.Name)
 	if err != nil {
-		s.writeErrorResponse(w, "Failed to add catalog", err)
+		s.writeErrorResponse(w, fmt.Sprintf("Failed to create catalog table: %v", err), err)
 		return
+	}
+
+	log.Printf("✓ Таблица для справочника '%s' готова: %s", req.Name, tableName)
+
+	// Сохраняем маппинг (если ещё не сохранён)
+	// GetOrCreateCatalogTable уже сохраняет маппинг внутри
+
+	// Обновляем счётчик справочников
+	_, err = uploadDB.Exec("UPDATE uploads SET total_catalogs = total_catalogs + 1 WHERE id = ?", upload.ID)
+	if err != nil {
+		log.Printf("Warning: Failed to update catalogs counter: %v", err)
 	}
 
 	s.log(LogEntry{
 		Timestamp:  time.Now(),
 		Level:      "INFO",
-		Message:    fmt.Sprintf("Catalog '%s' metadata added successfully", req.Name),
+		Message:    fmt.Sprintf("Catalog '%s' metadata added (table: %s)", req.Name, tableName),
 		UploadUUID: req.UploadUUID,
 		Endpoint:   "/catalog/meta",
 	})
 
 	response := CatalogMetaResponse{
 		Success:   true,
-		CatalogID: catalog.ID,
+		CatalogID: upload.ID, // Возвращаем upload_id как catalog_id для обратной совместимости
 		Message:   "Catalog metadata added successfully",
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
@@ -1205,7 +1138,7 @@ func (s *Server) handleCatalogItem(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[DEBUG] Timestamp: %s", req.Timestamp)
 
-	// Получаем БД для этой выгрузки
+	// Получаем БД для этой выгрузки (теперь всегда единая БД)
 	uploadDB, err := s.getUploadDatabase(req.UploadUUID)
 	if err != nil {
 		s.writeErrorResponse(w, fmt.Sprintf("Failed to get upload database: %v", err), err)
@@ -1219,18 +1152,25 @@ func (s *Server) handleCatalogItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Находим справочник по имени
-	var catalogID int
-	err = uploadDB.QueryRow("SELECT id FROM catalogs WHERE upload_id = ? AND name = ?", upload.ID, req.CatalogName).Scan(&catalogID)
+	// НОВАЯ ЛОГИКА: Получаем имя таблицы для этого справочника
+	tableName, err := database.GetCatalogTableName(uploadDB.GetDB(), req.CatalogName)
 	if err != nil {
-		s.writeErrorResponse(w, "Catalog not found", err)
-		return
+		// Если таблица не найдена, создаём её (на случай если пропустили /catalog/meta)
+		tableName, err = database.GetOrCreateCatalogTable(uploadDB.GetDB(), req.CatalogName)
+		if err != nil {
+			s.writeErrorResponse(w, fmt.Sprintf("Failed to get/create catalog table: %v", err), err)
+			return
+		}
+		log.Printf("[DEBUG] Таблица для справочника '%s' создана автоматически: %s", req.CatalogName, tableName)
 	}
+
+	log.Printf("[DEBUG] Используется таблица: %s", tableName)
 
 	// Attributes и TableParts уже приходят как XML строки из 1С
 	// Передаем их напрямую как строки
 	log.Printf("[DEBUG] --- Сохранение в БД ---")
-	log.Printf("[DEBUG] catalogID: %d", catalogID)
+	log.Printf("[DEBUG] tableName: %s", tableName)
+	log.Printf("[DEBUG] upload_id: %d", upload.ID)
 	log.Printf("[DEBUG] reference: %s", req.Reference)
 	log.Printf("[DEBUG] code: %s", req.Code)
 	log.Printf("[DEBUG] name: %s", req.Name)
@@ -1245,19 +1185,20 @@ func (s *Server) handleCatalogItem(w http.ResponseWriter, r *http.Request) {
 		}())
 	log.Printf("[DEBUG] tableParts для сохранения (длина: %d)", len(tablePartsStr))
 	
-	if err := uploadDB.AddCatalogItem(catalogID, req.Reference, req.Code, req.Name, attrsStr, tablePartsStr); err != nil {
+	// Используем новую функцию для вставки в динамическую таблицу
+	if err := uploadDB.AddCatalogItemToTable(tableName, upload.ID, req.Reference, req.Code, req.Name, attrsStr, tablePartsStr); err != nil {
 		log.Printf("[DEBUG] ✗ ОШИБКА при сохранении в БД: %v", err)
 		s.writeErrorResponse(w, "Failed to add catalog item", err)
 		return
 	}
 
-	log.Printf("[DEBUG] ✓ Элемент успешно сохранен в БД")
+	log.Printf("[DEBUG] ✓ Элемент успешно сохранен в таблицу %s", tableName)
 	log.Printf("[DEBUG] ========================================")
 
 	s.log(LogEntry{
 		Timestamp:  time.Now(),
 		Level:      "INFO",
-		Message:    fmt.Sprintf("Catalog item '%s' added successfully", req.Name),
+		Message:    fmt.Sprintf("Catalog item '%s' added to table %s", req.Name, tableName),
 		UploadUUID: req.UploadUUID,
 		Endpoint:   "/catalog/item",
 	})

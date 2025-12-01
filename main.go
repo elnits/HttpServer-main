@@ -65,8 +65,17 @@ func main() {
 	defer serviceDB.Close()
 	log.Printf("Используется сервисная база данных: %s", serviceDBPath)
 
+	// Создаем единую базу данных для справочников
+	unifiedCatalogsDBPath := config.UnifiedCatalogsDBPath
+	unifiedCatalogsDB, err := database.NewUnifiedDBWithConfig(unifiedCatalogsDBPath, dbConfig)
+	if err != nil {
+		log.Fatalf("Ошибка создания единой базы данных справочников: %v", err)
+	}
+	defer unifiedCatalogsDB.Close()
+	log.Printf("Используется единая база данных справочников: %s", unifiedCatalogsDBPath)
+
 	// Создаем сервер с обеими БД и сервисной БД
-	srv := server.NewServerWithConfig(db, normalizedDB, serviceDB, dbPath, normalizedDBPath, config)
+	srv := server.NewServerWithConfig(db, normalizedDB, serviceDB, unifiedCatalogsDB, dbPath, normalizedDBPath, config)
 
 	// Проверяем, нужно ли запускать GUI (по умолчанию в контейнере без GUI)
 	useGUI := os.Getenv("USE_GUI") == "true"
